@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Dissector", "Dissector\Dissector.vcxproj", "{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorDX9", "DissectorDX9\DissectorDX9.vcxproj", "{8081C1FB-31C0-4C81-99BF-1FE28610135B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorWinSock", "DissectorWinSock\DissectorWinSock.vcxproj", "{DB0172D5-A6AF-4708-BCE6-9B0163501248}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Debug|Win32.Build.0 = Debug|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Release|Win32.ActiveCfg = Release|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Release|Win32.Build.0 = Release|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Debug|Win32.Build.0 = Debug|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Release|Win32.ActiveCfg = Release|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Release|Win32.Build.0 = Release|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Debug|Win32.ActiveCfg = Debug|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Debug|Win32.Build.0 = Debug|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Release|Win32.ActiveCfg = Release|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

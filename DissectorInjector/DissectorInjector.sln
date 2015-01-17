@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorInjector", "DissectorInjector\DissectorInjector.vcxproj", "{5FD7AEC0-07CE-4EA5-9FFB-9B34D41D2C7D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E} = {A6A1B567-08F3-4312-8E74-6F6BFB4E258E}
+		{6C2E649F-0B11-4CAA-B310-576536CF29EB} = {6C2E649F-0B11-4CAA-B310-576536CF29EB}
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248} = {DB0172D5-A6AF-4708-BCE6-9B0163501248}
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B} = {8081C1FB-31C0-4C81-99BF-1FE28610135B}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorDX9", "..\DissectorDX9\DissectorDX9.vcxproj", "{8081C1FB-31C0-4C81-99BF-1FE28610135B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Dissector", "..\Dissector\Dissector.vcxproj", "{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorWinSock", "..\DissectorWinSock\DissectorWinSock.vcxproj", "{DB0172D5-A6AF-4708-BCE6-9B0163501248}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DissectorInjectorDLL", "..\DissectorInjectorDLL\DissectorInjectorDLL.vcxproj", "{6C2E649F-0B11-4CAA-B310-576536CF29EB}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E} = {A6A1B567-08F3-4312-8E74-6F6BFB4E258E}
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248} = {DB0172D5-A6AF-4708-BCE6-9B0163501248}
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B} = {8081C1FB-31C0-4C81-99BF-1FE28610135B}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5FD7AEC0-07CE-4EA5-9FFB-9B34D41D2C7D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{5FD7AEC0-07CE-4EA5-9FFB-9B34D41D2C7D}.Debug|Win32.Build.0 = Debug|Win32
+		{5FD7AEC0-07CE-4EA5-9FFB-9B34D41D2C7D}.Release|Win32.ActiveCfg = Release|Win32
+		{5FD7AEC0-07CE-4EA5-9FFB-9B34D41D2C7D}.Release|Win32.Build.0 = Release|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Debug|Win32.Build.0 = Debug|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Release|Win32.ActiveCfg = Release|Win32
+		{8081C1FB-31C0-4C81-99BF-1FE28610135B}.Release|Win32.Build.0 = Release|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Debug|Win32.Build.0 = Debug|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Release|Win32.ActiveCfg = Release|Win32
+		{A6A1B567-08F3-4312-8E74-6F6BFB4E258E}.Release|Win32.Build.0 = Release|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Debug|Win32.ActiveCfg = Debug|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Debug|Win32.Build.0 = Debug|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Release|Win32.ActiveCfg = Release|Win32
+		{DB0172D5-A6AF-4708-BCE6-9B0163501248}.Release|Win32.Build.0 = Release|Win32
+		{6C2E649F-0B11-4CAA-B310-576536CF29EB}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6C2E649F-0B11-4CAA-B310-576536CF29EB}.Debug|Win32.Build.0 = Debug|Win32
+		{6C2E649F-0B11-4CAA-B310-576536CF29EB}.Release|Win32.ActiveCfg = Release|Win32
+		{6C2E649F-0B11-4CAA-B310-576536CF29EB}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

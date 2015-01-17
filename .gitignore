@@ -16,8 +16,8 @@ x64/
 x86/
 build/
 bld/
-[Bb]in/
 [Oo]bj/
+build-DissectorGUI-*/
 
 # Roslyn cache directories
 *.ide/
@@ -229,3 +229,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+*.pso
+*.o
+Dissector/Dissector (Restored) 09-22-2014 20.32.cpp

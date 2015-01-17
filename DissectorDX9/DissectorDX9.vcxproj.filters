@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="DissectorDX9.cpp" />
+    <ClCompile Include="ShaderDebugDX9.cpp" />
+    <ClCompile Include="DX9Helpers.cpp" />
+    <ClCompile Include="DX9Tests.cpp" />
+    <ClCompile Include="DX9Capture.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="DissectorDX9.h" />
+    <ClInclude Include="ShaderDebugDX9.h" />
+    <ClInclude Include="DX9Helpers.h" />
+    <ClInclude Include="DX9Tests.h" />
+    <ClInclude Include="DX9Internal.h" />
+    <ClInclude Include="DX9Capture.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="SingleColor.hlsl" />
+    <None Include="SingleTexture.hlsl" />
+    <None Include="PosVertex.hlsl" />
+  </ItemGroup>
+</Project>

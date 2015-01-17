@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="DLLExports.h" />
+    <ClInclude Include="..\mhook\disasm-lib\cpu.h">
+      <Filter>disasm-lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\mhook\disasm-lib\disasm.h">
+      <Filter>disasm-lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\mhook\disasm-lib\disasm_x86.h">
+      <Filter>disasm-lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\mhook\disasm-lib\disasm_x86_tables.h">
+      <Filter>disasm-lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\mhook\disasm-lib\misc.h">
+      <Filter>disasm-lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\mhook\mhook-lib\mhook.h">
+      <Filter>mhook-lib</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="DLLSetup.cpp" />
+    <ClCompile Include="..\mhook\disasm-lib\cpu.c">
+      <Filter>disasm-lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mhook\disasm-lib\disasm.c">
+      <Filter>disasm-lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mhook\disasm-lib\disasm_x86.c">
+      <Filter>disasm-lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mhook\disasm-lib\misc.c">
+      <Filter>disasm-lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mhook\mhook-lib\mhook.cpp">
+      <Filter>mhook-lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Hooks.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="disasm-lib">
+      <UniqueIdentifier>{9fb91662-6752-4ae9-b0ff-6ccbe8377604}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mhook-lib">
+      <UniqueIdentifier>{fe2a04bf-0ccd-4ad4-9fea-471fe96b3e71}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
