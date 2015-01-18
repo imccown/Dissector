@@ -24,7 +24,7 @@ Dissector also uses several libraries and/or components which include their own 
 mhook: <http://codefromthe70s.org/mhook23.aspx> distributed under the MIT license.
 
 
-Portions of (marked in the source files as such) of RenderDoc: <http://cryengine.com/renderdoc> distribued under the MIT license.
+Portions of (marked in the source files as such) of RenderDoc: <https://github.com/baldurk/renderdoc> distribued under the MIT license.
 
 GNU Diff. Distributed as a binary with accompanying source under the GPL license v3: <http://fsf.org> See files in diffutils-3.3.tar.xz for full license.
 
