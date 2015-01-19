@@ -2041,6 +2041,9 @@ DebugShaderCleanup:
 
         rt->GetDesc( &desc );
 
+        if( desc.Format == MAKEFOURCC( 'N', 'U', 'L', 'L' ) )
+            return;
+
         D3DDevice->CreateRenderTarget( desc.Width, desc.Height, desc.Format, D3DMULTISAMPLE_NONE, 0, true, &newRt.mPtr, NULL );
         if( !newRt )
             return;
