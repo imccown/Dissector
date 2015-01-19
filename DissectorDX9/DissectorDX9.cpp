@@ -2548,7 +2548,7 @@ DebugShaderCleanup:
 
             IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
             SetRenderStates( D3DDevice, drawIter );
-            UINT bufferSize, indexSize;
+            UINT bufferSize = 0, indexSize = 0;
 
             float* meshData = NULL;
             unsigned int* indexData = NULL;
