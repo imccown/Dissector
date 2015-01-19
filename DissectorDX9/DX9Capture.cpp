@@ -226,13 +226,13 @@ namespace DissectorDX9
             iD3DDevice->GetStreamSourceFreq( ii, &stream.mDivider );
 
             AddRenderStateHeader( RT_STREAMSOURCE_BEGIN + (ii*4) + 0, iDataIter, iDataSize );
-            AddRenderStateData( &stream.mBuffer, numStreams * sizeof(IDirect3DVertexBuffer9*), iDataIter, iDataSize );
+            AddRenderStateData( &stream.mBuffer, sizeof(IDirect3DVertexBuffer9*), iDataIter, iDataSize );
             AddRenderStateHeader( RT_STREAMSOURCE_BEGIN + (ii*4) + 1, iDataIter, iDataSize );
-            AddRenderStateData( &stream.mDivider, numStreams * sizeof(UINT), iDataIter, iDataSize );
+            AddRenderStateData( &stream.mOffsetInBytes, sizeof(UINT), iDataIter, iDataSize );
             AddRenderStateHeader( RT_STREAMSOURCE_BEGIN + (ii*4) + 2, iDataIter, iDataSize );
-            AddRenderStateData( &stream.mOffsetInBytes, numStreams * sizeof(UINT), iDataIter, iDataSize );
+            AddRenderStateData( &stream.mStride, sizeof(UINT), iDataIter, iDataSize );
             AddRenderStateHeader( RT_STREAMSOURCE_BEGIN + (ii*4) + 3, iDataIter, iDataSize );
-            AddRenderStateData( &stream.mStride, numStreams * sizeof(UINT), iDataIter, iDataSize );
+            AddRenderStateData( &stream.mDivider, sizeof(UINT), iDataIter, iDataSize );
             
             if( stream.mBuffer )
                 stream.mBuffer->Release();
@@ -413,10 +413,10 @@ namespace DissectorDX9
             int val = num % 4;
             switch( val )
             {
-            case( 0 ): sDX9Data.mStreamData[stream].mBuffer = *(IDirect3DVertexBuffer9**)eventData;
-            case( 1 ): sDX9Data.mStreamData[stream].mDivider = *(UINT*)eventData;
-            case( 2 ): sDX9Data.mStreamData[stream].mOffsetInBytes = *(UINT*)eventData;
-            case( 3 ): sDX9Data.mStreamData[stream].mStride = *(UINT*)eventData;
+            case( 0 ): sDX9Data.mStreamData[stream].mBuffer = *(IDirect3DVertexBuffer9**)eventData; break;
+            case( 1 ): sDX9Data.mStreamData[stream].mOffsetInBytes = *(UINT*)eventData; break;
+            case( 2 ): sDX9Data.mStreamData[stream].mStride = *(UINT*)eventData; break;
+            case( 3 ): sDX9Data.mStreamData[stream].mDivider = *(UINT*)eventData; break;
             }
 
             streamsDirty = true;
