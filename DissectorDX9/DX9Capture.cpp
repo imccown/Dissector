@@ -80,6 +80,8 @@ namespace DissectorDX9
             AddRenderStateHeader( RT_DEPTHSTENCILSURFACE, iDataIter, iDataSize );
             AddRenderStateData( &surface.mPtr, sizeof(IDirect3DSurface9*), iDataIter, iDataSize );
         }
+
+        AddCapturedAssetHandle( surface.mPtr );
     }
 
     void SetDepthStencilSurface( IDirect3DDevice9* iD3DDevice, char* iData, unsigned int iDataSize )
@@ -97,6 +99,8 @@ namespace DissectorDX9
             AddRenderStateHeader( RT_INDEXBUFFER, iDataIter, iDataSize );
             AddRenderStateData( &indexBuffer.mPtr, sizeof(IDirect3DIndexBuffer9*), iDataIter, iDataSize );
         }
+
+        AddCapturedAssetHandle( indexBuffer.mPtr );
     }
 
     void SetIndices( IDirect3DDevice9* iD3DDevice, char* iData, unsigned int iDataSize )
@@ -113,6 +117,8 @@ namespace DissectorDX9
             AddRenderStateHeader( RT_PIXELSHADER, iDataIter, iDataSize );
             AddRenderStateData( &shader.mPtr, sizeof(IDirect3DPixelShader9*), iDataIter, iDataSize );
         }
+
+        AddCapturedAssetHandle( shader.mPtr );
     }
 
     void SetPixelShader( IDirect3DDevice9* iD3DDevice, char* iData, unsigned int iDataSize )
@@ -180,6 +186,8 @@ namespace DissectorDX9
             iD3DDevice->GetRenderTarget( ii, &surface.mPtr );
             AddRenderStateHeader( RT_RENDERTARGET_BEGIN + ii, iDataIter, iDataSize );
             AddRenderStateData( &surface.mPtr, sizeof(IDirect3DSurface9*), iDataIter, iDataSize );
+
+            AddCapturedAssetHandle( surface.mPtr );
         }
     }
 
@@ -233,6 +241,8 @@ namespace DissectorDX9
             AddRenderStateData( &stream.mStride, sizeof(UINT), iDataIter, iDataSize );
             AddRenderStateHeader( RT_STREAMSOURCE_BEGIN + (ii*4) + 3, iDataIter, iDataSize );
             AddRenderStateData( &stream.mDivider, sizeof(UINT), iDataIter, iDataSize );
+
+            AddCapturedAssetHandle( stream.mBuffer );
             
             if( stream.mBuffer )
                 stream.mBuffer->Release();
@@ -248,6 +258,8 @@ namespace DissectorDX9
             iD3DDevice->GetTexture( ii, &texture.mPtr );
             AddRenderStateHeader( RT_TEXTURE_BEGIN+ii, iDataIter, iDataSize );
             AddRenderStateData( &texture.mPtr, sizeof(IDirect3DBaseTexture9*), iDataIter, iDataSize );
+
+            AddCapturedAssetHandle( texture.mPtr );
         }
     }
 
@@ -258,6 +270,8 @@ namespace DissectorDX9
 
         AddRenderStateHeader( RT_VERTEXDECLARATION, iDataIter, iDataSize );
         AddRenderStateData( &decl.mPtr, sizeof(IDirect3DVertexDeclaration9*), iDataIter, iDataSize );
+
+        AddCapturedAssetHandle( decl.mPtr );
     }
 
     void SetVertexDeclaration( IDirect3DDevice9* iD3DDevice, char* iData, unsigned int iDataSize )
@@ -273,6 +287,8 @@ namespace DissectorDX9
 
         AddRenderStateHeader( RT_VERTEXSHADER, iDataIter, iDataSize );
         AddRenderStateData( &shader.mPtr, sizeof(IDirect3DVertexShader9*), iDataIter, iDataSize );
+
+        AddCapturedAssetHandle( shader.mPtr );
     }
 
     void SetVertexShader( IDirect3DDevice9* iD3DDevice, char* iData, unsigned int iDataSize )

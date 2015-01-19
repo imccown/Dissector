@@ -1080,4 +1080,41 @@ namespace DissectorDX9
         default: return Dissector::PrimitiveType::Unknown;
         }
     }
+
+    void AddCapturedAssetHandle( IUnknown* iAsset )
+    {
+        if( !iAsset )
+            return;
+
+        if( sDX9Data.mAssetHandles ) 
+        {
+            for( unsigned int ii = 0; ii < sDX9Data.mAssetHandlesCount; ++ii )
+            {
+                if( sDX9Data.mAssetHandles[ii] == iAsset )
+                    return;
+            }
+        }
+
+        if( (sDX9Data.mAssetHandlesCount + 1) >= sDX9Data.mAssetHandlesSize )
+        {
+            unsigned int oldSize = sDX9Data.mAssetHandlesSize;
+            if( sDX9Data.mAssetHandlesSize < 32 )
+                sDX9Data.mAssetHandlesSize = 32;
+            else
+                sDX9Data.mAssetHandlesSize *= 2;
+
+            IUnknown** newArray = (IUnknown**)Dissector::MallocCallback( sDX9Data.mAssetHandlesSize * sizeof(IUnknown*) );
+            if( sDX9Data.mAssetHandles )
+            {
+                memcpy( newArray, sDX9Data.mAssetHandles, sizeof(IUnknown*) * oldSize );
+                Dissector::FreeCallback( sDX9Data.mAssetHandles );
+            }
+
+            sDX9Data.mAssetHandles = newArray;
+        }
+
+        iAsset->AddRef();
+        sDX9Data.mAssetHandles[sDX9Data.mAssetHandlesCount] = iAsset;
+        sDX9Data.mAssetHandlesCount++;
+    }
 };

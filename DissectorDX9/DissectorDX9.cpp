@@ -1208,8 +1208,25 @@ namespace DissectorDX9
         sDX9Data.mRTCopies = NULL;
     }
 
+    void ReleaseAssetHandles()
+    {
+        if( sDX9Data.mAssetHandles ) 
+        {
+            for( unsigned int ii = 0; ii < sDX9Data.mAssetHandlesCount; ++ii )
+            {
+                sDX9Data.mAssetHandles[ii]->Release();
+            }
+            Dissector::FreeCallback( sDX9Data.mAssetHandles );
+            sDX9Data.mAssetHandles = NULL;
+            sDX9Data.mAssetHandlesCount = 0;
+            sDX9Data.mAssetHandlesSize = 0;
+        }
+    }
+
     void DestroyD3DResources()
     {
+        ReleaseAssetHandles();
+
         SAFE_RELEASE( sDX9Data.mTimingQuery );
         SAFE_RELEASE( sDX9Data.mOcclusionQuery );
         SAFE_RELEASE( sDX9Data.mBandwidthTimingsQuery );
@@ -2790,6 +2807,8 @@ DebugShaderCleanup:
         Dissector::RegisterRenderStateTypes( rts, sizeof(rts) / sizeof(Dissector::RenderStateType) );
 
         sDX9Data.mDepthBuffers = NULL;
+        sDX9Data.mAssetHandles = NULL;
+        sDX9Data.mAssetHandlesCount = 0;
 
         sDX9Data.mInitialized = true;
         sDX9Data.mNoDepthReplacements = false;

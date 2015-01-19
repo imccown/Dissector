@@ -93,6 +93,10 @@ struct DX9Data
 
     // Copies of initial render targets
     RenderTargetData*           mRTCopies;
+
+    IUnknown**                  mAssetHandles;
+    unsigned int                mAssetHandlesCount;
+    unsigned int                mAssetHandlesSize;
 };
 
 struct RegisterData

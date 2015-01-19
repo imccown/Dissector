@@ -49,6 +49,8 @@ namespace DissectorDX9
     UINT GetVertexCountFromPrimitiveCount( D3DPRIMITIVETYPE iPrimitiveType, UINT iNumElements );
     UINT GetPrimtiveCountFromVertexCount( D3DPRIMITIVETYPE iPrimitiveType, UINT iNumVertices );
     Dissector::PrimitiveType::Type GetDissectorPrimitiveType( D3DPRIMITIVETYPE iPrimitiveType );
+
+    void AddCapturedAssetHandle( IUnknown* iAsset );
 };
 
 struct ScopedEndFrame
