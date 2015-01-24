@@ -380,16 +380,18 @@ namespace Dissector
 
     void SendEventList()
     {
-        char* outData = (char*)MallocCallback( 32*1024 );
+        size_t bufferLen = 32*1024;
+        char* outData = (char*)MallocCallback( bufferLen );
+        if( !outData )
+            return;
+
         char* dataIter = outData;
-        char* dataIterEnd = outData + (32*1042);
+        char* dataIterEnd = outData + bufferLen;
         char tempData[512];
 
         DrawCallData* iterEnd = &sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ];
         for( DrawCallData* iter = sDissectorData.mCaptureData; iter != iterEnd; ++iter )
         {
-            StoreBufferData( iter->mEventType, dataIter );
-
             size_t dataLen = 0;
             const char* dataPtr = NULL;
             if( iter->mEventType == -1 )
@@ -415,6 +417,30 @@ namespace Dissector
                 }
             }
 
+            if( (dataIter + sizeof(int) + sizeof(size_t) + dataLen) >= dataIterEnd ) 
+            {
+                // Buffer needs to grow
+                size_t bufferLen = dataIterEnd - outData;
+                size_t newBufferLen = 2*bufferLen;
+
+                char* newData = (char*)MallocCallback( newBufferLen );
+                if( !newData )
+                {
+                    FreeCallback( outData );
+                    return;
+                }
+
+                memcpy( newData, outData, bufferLen );
+
+                dataIter = newData + (dataIter - outData);
+                bufferLen = newBufferLen;
+                dataIterEnd = newData + bufferLen;
+                FreeCallback( outData );
+
+                outData = newData;
+            }
+
+            StoreBufferData( iter->mEventType, dataIter );
             StoreBufferData( dataLen, dataIter );
 
             if( dataLen )
