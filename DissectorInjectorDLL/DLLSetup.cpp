@@ -5,14 +5,14 @@
 
 void SetupHooks();
 
-char sDissectorMemory[ 32 * 1024 * 1024 ];
 extern "C" DECLDLL void __cdecl InitializeInjection()
 {
     SetupHooks();
     OutputDebugString( L"Initializing Dissector\n" );
-    Dissector::Initialize( sDissectorMemory, sizeof( sDissectorMemory ) );
     Dissector::SetMallocCallback( malloc );
     Dissector::SetFreeCallback( free );
+
+    Dissector::Initialize();
     DissectorWinsock::Initialize();
 
     // TODO: Shutdown properly!

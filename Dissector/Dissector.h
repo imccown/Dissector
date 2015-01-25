@@ -5,7 +5,7 @@
 namespace Dissector
 {
     // Setup
-    void Initialize( char* iMemory, int iMemorySize );
+    void Initialize();
     void Shutdown();
 
     enum MagicNumbers

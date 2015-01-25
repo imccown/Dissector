@@ -6,14 +6,6 @@
 #include <stdarg.h>
 #include "DissectorHelpers.h"
 
-static const int EVENT_TYPE_SIZE = 32*1024; // 32k for storing event state types
-static const int EVENT_NAME_SIZE = 32*1024; // 32k for storing event state type names
-
-static const int DRAW_CALL_DATA_SIZE = 256*1024; // 256k for storing draw call structures. Room for ~11k draw calls.
-
-static const int kMaxEventTypes  = EVENT_TYPE_SIZE / sizeof(Dissector::EventType);
-static const int kMaxCaptureSize = DRAW_CALL_DATA_SIZE / sizeof(Dissector::DrawCallData);
-
 // ------------------------------------------------------------------------------------
 // Static Data -- All this is done so we don't have to dynamically allocate memory and
 //                deal with custom memory managers.
@@ -22,11 +14,6 @@ struct DissectorData
 {
     DissectorData()
     {
-        mBigBuffer      = 0;
-        mBigBufferIter  = 0;
-        mBigBufferReset = 0;
-        mBigBufferEnd   = 0;
-
         mCaptureData    = 0;
         mCaptureSize    = 0;
 
@@ -36,6 +23,9 @@ struct DissectorData
         mShouldStartCapture = 0;
         mInSlaveMode = 0;
 
+        mMiscDataBuffer = NULL;
+        mMiscDataIter = NULL;
+
         mMallocCallback = NULL;
         mFreeCallback = NULL;
         mSendMessageCallback = NULL;
@@ -43,11 +33,6 @@ struct DissectorData
         mSlaveEnded = NULL;
         mCallbacks = NULL;
     }
-
-    char*                        mBigBuffer;
-    char*                        mBigBufferIter;
-    char*                        mBigBufferReset;
-    char*                        mBigBufferEnd;
 
     char*                        mStateTypeBuffer;
     int                          mStateTypeBufferSize;
@@ -58,7 +43,12 @@ struct DissectorData
     int                          mNumEventTypes;
 
     Dissector::DrawCallData*     mCaptureData;
+    int                          mCaptureDataBufferSize;
     int                          mCaptureSize;
+
+    char*                        mMiscDataBuffer;
+    char*                        mMiscDataBufferEnd;
+    char*                        mMiscDataIter;
 
     int                          mDrawCallLimit;
 
@@ -91,28 +81,26 @@ static DissectorData sDissectorData;
 
 namespace Dissector
 {
-    void Initialize( char* iMemory, int iMemorySize )
+    void Initialize()
     {
-        sDissectorData.mBigBuffer     = (char*)iMemory;
-        sDissectorData.mBigBufferIter = iMemory;
-        sDissectorData.mBigBufferEnd  = iMemory + iMemorySize;
 
-        // Dole out memory blocks from our big block to each buffer
-        sDissectorData.mEventTypes     = (Dissector::EventType*)sDissectorData.mBigBufferIter;
-        sDissectorData.mBigBufferIter += EVENT_TYPE_SIZE;
+        // These  can be fixed since the names are defined by dissector modules not the debugged program
+        static const size_t eventNamesSize = 32*1024;
+        static const size_t eventTypesSize = 32*1024;
+        sDissectorData.mEventTypes     = (Dissector::EventType*)MallocCallback( eventTypesSize );
         sDissectorData.mNumEventTypes  = 0;
 
-        sDissectorData.mEventNames = sDissectorData.mBigBufferIter;
-        sDissectorData.mBigBufferIter += EVENT_NAME_SIZE;
-        sDissectorData.mEventNamesEnd = sDissectorData.mBigBufferIter;
-
-        sDissectorData.mCaptureData = (DrawCallData*)sDissectorData.mBigBufferIter;
-        sDissectorData.mBigBufferIter += DRAW_CALL_DATA_SIZE;
+        sDissectorData.mEventNames = (char*)MallocCallback( eventNamesSize );
+        sDissectorData.mEventNamesEnd = sDissectorData.mEventNames + eventNamesSize;
+        
+        sDissectorData.mCaptureDataBufferSize = 4096; // 4k draw calls, will resize if neccessary.
+        sDissectorData.mCaptureData = (DrawCallData*)MallocCallback( sizeof(DrawCallData) * sDissectorData.mCaptureDataBufferSize );
         sDissectorData.mCaptureSize = 0;
 
-        // Rest of the buffer will be used for captures.
-        sDissectorData.mBigBufferReset = sDissectorData.mBigBufferIter;
-        sDissectorData.mBigBufferIter = NULL;
+        static const size_t baseMiscSize = 4*1024*1024; // This will grow if neccessary for capturing.
+        sDissectorData.mMiscDataBuffer = (char*)MallocCallback( baseMiscSize );
+        sDissectorData.mMiscDataBufferEnd = sDissectorData.mMiscDataBuffer + baseMiscSize;
+        sDissectorData.mMiscDataIter = NULL;
 
         sDissectorData.mStateTypeBuffer = NULL;
         sDissectorData.mStateTypeBufferSize = 0;
@@ -120,11 +108,19 @@ namespace Dissector
 
     void Shutdown()
     {
-        sDissectorData.mBigBuffer      = NULL;
-        sDissectorData.mBigBufferIter  = NULL;
-        sDissectorData.mBigBufferEnd   = NULL;
-        sDissectorData.mCaptureData    = 0;
-        sDissectorData.mCaptureSize    = 0;
+        if( sDissectorData.mEventNames ) FreeCallback( sDissectorData.mEventNames );
+        if( sDissectorData.mEventTypes ) FreeCallback( sDissectorData.mEventTypes );
+        if( sDissectorData.mCaptureData ) FreeCallback( sDissectorData.mCaptureData );
+        if( sDissectorData.mMiscDataBuffer ) FreeCallback( sDissectorData.mMiscDataBuffer );
+
+        sDissectorData.mEventNames = NULL;
+        sDissectorData.mEventTypes = NULL;
+        sDissectorData.mCaptureData = NULL;
+        sDissectorData.mCaptureDataBufferSize = 0;
+        sDissectorData.mCaptureSize = 0;
+        sDissectorData.mMiscDataBuffer = NULL;
+        sDissectorData.mMiscDataBufferEnd = NULL;;
+        sDissectorData.mMiscDataIter = NULL;
 
         if( sDissectorData.mStateTypeBuffer )
         {
@@ -279,7 +275,7 @@ namespace Dissector
     void TriggerCapture()
     {
         sDissectorData.mCaptureSize    = 0;
-        sDissectorData.mBigBufferIter  = sDissectorData.mBigBufferReset;
+        sDissectorData.mMiscDataIter = sDissectorData.mMiscDataBuffer;
         sDissectorData.mShouldStartCapture = 0;
         sDissectorData.mShouldExitCapture = 0;
     }
@@ -296,10 +292,10 @@ namespace Dissector
 
     void EndFrame( void* iDevice )
     {
-        if( sDissectorData.mBigBufferIter )
+        if( sDissectorData.mMiscDataIter )
         {
             sDissectorData.mCallbacks->EndCaptureFrame( iDevice );
-            sDissectorData.mBigBufferIter  = NULL;
+            sDissectorData.mMiscDataIter = NULL;
         }
     }
 
@@ -766,10 +762,6 @@ namespace Dissector
         }
 
         sDissectorData.mInSlaveMode = 0;
-        sDissectorData.mCallbacks->SlaveEnd( iDevice );
-
-        if( sDissectorData.mSlaveEnded )
-            sDissectorData.mSlaveEnded();
 
         // Free all the tool allocated render states now that it's stopping.
         for( int ii = 0; ii < sDissectorData.mCaptureSize; ++ii )
@@ -783,71 +775,162 @@ namespace Dissector
                 FreeCallback( old );
             }
         }
+
+        sDissectorData.mCallbacks->SlaveEnd( iDevice );
+
+        if( sDissectorData.mSlaveEnded )
+            sDissectorData.mSlaveEnded();
     }
 
-    bool IsCapturing()
+    inline bool IsCapturing()
     {
-        return sDissectorData.mBigBufferIter != NULL;
+        return sDissectorData.mMiscDataIter != NULL;
     }
+
+    inline bool PrepareMiscDataBufferForAdd( size_t iSize )
+    {
+        if( (sDissectorData.mMiscDataIter + iSize) < sDissectorData.mMiscDataBufferEnd )
+            return true; // Will fit. Do nothing.
+
+        // Must resize the buffer.
+        size_t bufferSize = sDissectorData.mMiscDataBufferEnd - sDissectorData.mMiscDataBuffer;
+        size_t newBufferSize = (bufferSize >= 512*1024*1024) ? (bufferSize + (128*1024*1024)) : 2 * bufferSize;
+
+        char* newBuffer = (char*)MallocCallback( newBufferSize );
+        if( newBuffer == NULL )
+            return false;
+
+        char* oldBuffer = sDissectorData.mMiscDataBuffer;
+        memcpy( newBuffer, oldBuffer, bufferSize );
+        
+        // Fix all the pointers to this data
+        for( Dissector::DrawCallData* iter = sDissectorData.mCaptureData, *end = &sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ];
+            iter != end; ++iter )
+        {
+            if( iter->mDrawCallData ) 
+            {
+                size_t offset = iter->mDrawCallData - oldBuffer;
+                iter->mDrawCallData = newBuffer + offset;
+            }
+            if( iter->mFirstRenderState )
+            {
+                size_t offset = ((char*)iter->mFirstRenderState) - oldBuffer;
+                iter->mFirstRenderState = (Dissector::RenderState*)(newBuffer + offset);
+            }
+        }
+
+        sDissectorData.mMiscDataBuffer = newBuffer;
+        sDissectorData.mMiscDataIter = newBuffer + (sDissectorData.mMiscDataIter - oldBuffer);
+        sDissectorData.mMiscDataBufferEnd = newBuffer + newBufferSize;
+        FreeCallback( oldBuffer );
+
+        return true;
+    }
+
+    inline bool PrepareCaptureDataBufferForAdd()
+    {
+        if( (sDissectorData.mCaptureSize + 1) < sDissectorData.mCaptureDataBufferSize )
+            return true;
+
+        // Must resize the buffer.
+        size_t bufferSize = sDissectorData.mCaptureDataBufferSize;
+        size_t newBufferSize = 2 * bufferSize;
+
+        Dissector::DrawCallData* newBuffer = (Dissector::DrawCallData*)MallocCallback( newBufferSize * sizeof(Dissector::DrawCallData) );
+        if( newBuffer == NULL )
+            return false;
+
+        Dissector::DrawCallData* oldBuffer = sDissectorData.mCaptureData;
+        memcpy( (char*)newBuffer, (char*)oldBuffer, bufferSize * sizeof(Dissector::DrawCallData) );
+        sDissectorData.mCaptureData = newBuffer;
+        sDissectorData.mCaptureDataBufferSize = newBufferSize;
+        FreeCallback( oldBuffer );
+
+        return true;
+    }
+
 
     // Draw call registering functions
     void StartDrawCallGroup( const char* iName )
     {
-        if( sDissectorData.mBigBufferIter )
+        if( IsCapturing() )
         {
+            if( !PrepareCaptureDataBufferForAdd() )
+                return;
+
+            int nameLen = strlen( iName )+1;
+            if( !PrepareMiscDataBufferForAdd( nameLen ) )
+                return;
+
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mFirstRenderState = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeDrawCallData = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeRenderStateData = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mEventType = -1;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mToolRenderStates = 0;
-            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = sDissectorData.mBigBufferIter;
 
-            int nameLen = strlen( iName );
-            assert( (sDissectorData.mBigBufferIter + nameLen) < sDissectorData.mBigBufferEnd ); // OOM in the big buffer
-            memcpy( sDissectorData.mBigBufferIter, iName, nameLen+1 );
-            sDissectorData.mBigBufferIter += nameLen+1;
+
+            memcpy( sDissectorData.mMiscDataIter, iName, nameLen );
+            sDissectorData.mMiscDataIter += nameLen;
+
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = sDissectorData.mMiscDataIter;
             ++sDissectorData.mCaptureSize;
         }
     }
 
     void EndDrawCallGroup()
     {
-        if( sDissectorData.mBigBufferIter )
+        if( IsCapturing() )
         {
+            if( !PrepareCaptureDataBufferForAdd() )
+                return;
+
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mFirstRenderState = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeDrawCallData = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeRenderStateData = 0;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mEventType = -2;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = 0;
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mToolRenderStates = 0;
             ++sDissectorData.mCaptureSize;
         }
     }
 
     void RegisterEvent( void* iDevice, int iEventType, const void* iEventData, unsigned int iDataSize )
     {
-        if( sDissectorData.mBigBufferIter )
+        if( sDissectorData.mMiscDataBuffer )
         {
-            assert( (sDissectorData.mBigBufferIter + iDataSize) < sDissectorData.mBigBufferEnd );
+            if( !PrepareMiscDataBufferForAdd( iDataSize ) )
+                return;
+
+            if( !PrepareCaptureDataBufferForAdd() )
+                return;
+
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeDrawCallData = iDataSize;
-            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = sDissectorData.mBigBufferIter;
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = sDissectorData.mMiscDataIter;
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mEventType = iEventType;
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mToolRenderStates = 0;
 
-            memcpy( sDissectorData.mBigBufferIter, iEventData, iDataSize );
-            sDissectorData.mBigBufferIter += iDataSize;
+            memcpy( sDissectorData.mMiscDataIter, iEventData, iDataSize );
+            sDissectorData.mMiscDataIter += iDataSize;
 
-            sDissectorData.mCallbacks->FillRenderStates( iDevice, iEventType, iEventData, iDataSize );
             ++sDissectorData.mCaptureSize;
+            sDissectorData.mCallbacks->FillRenderStates( iDevice, iEventType, iEventData, iDataSize );
         }
     }
 
     void AddRenderStateEntries( void* iRenderStateData, unsigned int iDataSize )
     {
-        assert( (sDissectorData.mBigBufferIter + iDataSize ) < sDissectorData.mBigBufferEnd );
-        sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mSizeRenderStateData = iDataSize;
-        sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mFirstRenderState = (Dissector::RenderState*)sDissectorData.mBigBufferIter;
+        if( !PrepareMiscDataBufferForAdd( iDataSize ) )
+        {
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize-1 ].mSizeRenderStateData = 0;
+            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize-1 ].mFirstRenderState = NULL;
+            return;
+        }
 
-        memcpy( sDissectorData.mBigBufferIter, iRenderStateData, iDataSize );
-        sDissectorData.mBigBufferIter += iDataSize;
+        sDissectorData.mCaptureData[ sDissectorData.mCaptureSize-1 ].mSizeRenderStateData = iDataSize;
+        sDissectorData.mCaptureData[ sDissectorData.mCaptureSize-1 ].mFirstRenderState = (Dissector::RenderState*)sDissectorData.mMiscDataIter;
+
+        memcpy( sDissectorData.mMiscDataIter, iRenderStateData, iDataSize );
+        sDissectorData.mMiscDataIter += iDataSize;
     }
 
     void AddEventStats( const QueryData* iData, unsigned int iNumData )
