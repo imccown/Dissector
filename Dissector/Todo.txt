@@ -2,7 +2,6 @@ Tasks:
 
 --- Shortlist ---
 Crashes in BGFX
-Sometimes render target thumbnails are wrong
 x64 support
 Better depth/stencil viewing support
 Choose which render target to view, and/or show all render targets.
@@ -20,6 +19,7 @@ Finding out if/why draw call doesn't rasterize (degenerate vertices, indices, et
 Normalization for depth buffers
 Shader debugger sometimes doesn't have last line debug info
 Save everything (for later playback)
+Show texture formats and other useful information
 
 --- Some day ---
 Show which texture are actually used by the pixel shader.
