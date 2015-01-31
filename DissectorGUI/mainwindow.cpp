@@ -1303,6 +1303,7 @@ void MainWindow::PopulateEventInfo()
         case(Dissector::RSTF_VISUALIZE_RESOURCE_TEXTURE):
         case(Dissector::RSTF_VISUALIZE_RESOURCE_RENDERTARGET):
         {
+            editable->setIcon( QIcon() );
             RequestThumbnail( eventNum, eventData, rstype.mVisualizerType, editable );
             value.sprintf( "0x%x", *(unsigned int*)eventData );
             editable->setText( value );
