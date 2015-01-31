@@ -2230,7 +2230,10 @@ DebugShaderCleanup:
                     int num = iRSType - RT_TEXTURE_BEGIN;
                     ScopedRelease<IDirect3DBaseTexture9> base;
                     D3DDevice->GetTexture( num, &base.mPtr );
-                    base->QueryInterface( IID_IDirect3DBaseTexture9, (void**)&src.mPtr );
+                    if( base.mPtr )
+                        base->QueryInterface( IID_IDirect3DBaseTexture9, (void**)&src.mPtr );
+                    else
+                        return;
                 }
                 else if( iRSType >= RT_RENDERTARGET_BEGIN && iRSType < RT_RENDERTARGET_END )
                 {
@@ -2247,6 +2250,9 @@ DebugShaderCleanup:
                     return; // Unsupported type.
                 }
             }
+
+            if( !src.mPtr )
+                return;
 
             D3DSURFACE_DESC desc;
             src->GetLevelDesc( 0, &desc );
