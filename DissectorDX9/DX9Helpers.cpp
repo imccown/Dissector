@@ -487,7 +487,7 @@ namespace DissectorDX9
                     size = (size > (2*desc.Size)) ? (2*desc.Size) : size;
 
                     rvalue = (UINT*)Dissector::MallocCallback( size );
-                    oBufferSize = size;
+                    oBufferSize = (unsigned int)size;
                     unsigned short* iter = ((unsigned short*)buf) + iStartElement;
                     unsigned short* end = (unsigned short*)(((unsigned char*)iter) + baseSize);
                     UINT* outIter = rvalue;
@@ -501,7 +501,7 @@ namespace DissectorDX9
                     size_t size = iNumElements * sizeof(UINT);
                     size = (size > desc.Size) ? desc.Size : size;
 
-                    oBufferSize = size;
+                    oBufferSize = (unsigned int)size;
                     rvalue = (UINT*)Dissector::MallocCallback( size );
                     if( rvalue )
                     {
@@ -568,7 +568,7 @@ namespace DissectorDX9
         vertEnd = vertIter + numVerts * streamStride;
 
         //TODO: Convert the position for each vertex into a float4 and return that buffer.
-        oBufferSize = numVerts * 4 * sizeof(float);
+        oBufferSize = (unsigned int)(numVerts * 4 * sizeof(float));
         float* rvalue = (float*)Dissector::MallocCallback( oBufferSize );
         if( rvalue )
         {

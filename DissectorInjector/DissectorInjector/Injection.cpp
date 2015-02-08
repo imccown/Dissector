@@ -26,6 +26,7 @@
 #include "stdafx.h"
 #include <tlhelp32.h> 
 #include <stdio.h>
+#include "Injection.h"
 
 #ifndef _UINTPTR_T_DEFINED
 #ifdef  _WIN64
@@ -35,6 +36,15 @@ typedef _W64 unsigned int   uintptr_t;
 #endif
 #define _UINTPTR_T_DEFINED
 #endif
+
+#if defined(WIN64)
+static const char* dllName = "dissectorinjectordll_x64.dll";
+static const WCHAR* dllNameL = L"dissectorinjectordll_x64.dll";
+#else
+static const char* dllName = "dissectorinjectordll.dll";
+static const WCHAR* dllNameL = L"dissectorinjectordll.dll";
+#endif
+
 
 #define RDCEraseMem(a, b) memset(a, 0, b)
 #define RDCEraseEl(a) memset(&a, 0, sizeof(a))
@@ -56,7 +66,7 @@ void InjectDLL(HANDLE hProcess, WCHAR* libName)
 	VirtualFreeEx(hProcess, remoteMem, sizeof(dllPath), MEM_RELEASE); 
 }
 
-uintptr_t FindRemoteDLL(DWORD pid, WCHAR* libName)
+uintptr_t FindRemoteDLL(DWORD pid, const WCHAR* libName)
 {
 	HANDLE hModuleSnap = INVALID_HANDLE_VALUE;
 
@@ -146,7 +156,8 @@ void InjectFunctionCall(HANDLE hProcess, uintptr_t renderdoc_remote, const char 
 
 	printf("Injecting call to %hs", funcName);
 	
-	HMODULE renderdoc_local = GetModuleHandleA("dissectorinjectordll.dll");
+
+    HMODULE renderdoc_local = GetModuleHandleA(dllName);
 	
 	uintptr_t func_local = (uintptr_t)GetProcAddress(renderdoc_local, funcName);
 
@@ -167,11 +178,11 @@ void InjectFunctionCall(HANDLE hProcess, uintptr_t renderdoc_remote, const char 
 	VirtualFreeEx(hProcess, remoteMem, dataLen, MEM_RELEASE);
 }
 
-unsigned int InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int waitForDebugger )
+InjectReturns InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int waitForDebugger)
 {
 	HANDLE hProcess = OpenProcess( PROCESS_CREATE_THREAD | 
 		PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION |
-		PROCESS_VM_WRITE | PROCESS_VM_READ | SYNCHRONIZE,
+        PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_TERMINATE | SYNCHRONIZE,
 		FALSE, pid );
 
 	if(waitForDebugger > 0)
@@ -200,91 +211,41 @@ unsigned int InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int 
 
 	//RDCLOG("Injecting renderdoc into process %lu", pid);
 	
-	wchar_t renderdocPath[MAX_PATH] = {0};
-	GetModuleFileNameW(GetModuleHandleA("dissectorinjectordll.dll"), &renderdocPath[0], MAX_PATH-1);
+	wchar_t dllpath[MAX_PATH] = {0};
+    GetModuleFileNameW(GetModuleHandleA(dllName), &dllpath[0], MAX_PATH - 1);
 
 	BOOL isWow64 = FALSE;
-	BOOL success = IsWow64Process(hProcess, &isWow64);
+	BOOL success = IsWow64Process(hProcess, &isWow64); // This actually returns if the application bitness is different than the OS bitness
 
 	if(!success)
 	{
 		printf("Couldn't determine bitness of process\n");
 		CloseHandle(hProcess);
-		return 0;
+        return eInjectFailed;
 	}
 
-#if !defined(WIN64)
-	if(!isWow64)
-	{
-		printf("Can't capture x64 process with x86 renderdoc\n");
-		CloseHandle(hProcess);
-		return 0;
-	}
+#ifdef WIN64
+    if (isWow64)
+    {
+        TerminateProcess(hProcess, 0);
+        return eInjectFailedBitMismatch;
+    }
 #else
-	// farm off to x86 version
-	if(isWow64)
-	{
-		wchar_t *slash = wcsrchr(renderdocPath, L'\\');
-
-		if(slash) *slash = 0;
-
-		wcscat_s(renderdocPath, L"\\x86\\renderdoccmd.exe");
-
-		PROCESS_INFORMATION pi;
-		STARTUPINFO si;
-		SECURITY_ATTRIBUTES pSec;
-		SECURITY_ATTRIBUTES tSec;
-	
-		RDCEraseEl(pi);
-		RDCEraseEl(si);
-		RDCEraseEl(pSec);
-		RDCEraseEl(tSec);
-	
-		pSec.nLength = sizeof(pSec);
-		tSec.nLength = sizeof(tSec);
-	
-		wchar_t *paramsAlloc = new wchar_t[256];
-
-		string optstr = opts->ToString();
-
-		_snwprintf_s(paramsAlloc, 255, 255, L"\"%ls\" -cap32for64 %d \"%ls\" \"%hs\"", renderdocPath, pid, logfile, optstr.c_str());
-	
-		BOOL retValue = CreateProcessW(NULL, paramsAlloc, &pSec, &tSec, false, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
-
-		SAFE_DELETE_ARRAY(paramsAlloc);
-
-		if (!retValue)
-		{
-			printf("Can't spawn x86 renderdoccmd - missing files?\n");
-			return 0;
-		}
-		
-		ResumeThread(pi.hThread);
-		WaitForSingleObject(pi.hThread, INFINITE);
-		CloseHandle(pi.hThread);
-
-		DWORD exitCode = 0;
-		GetExitCodeProcess(pi.hProcess, &exitCode);
-		CloseHandle(pi.hProcess);
-
-		if(waitForExit)
-			WaitForSingleObject(hProcess, INFINITE);
-		
-		CloseHandle(hProcess);
-
-		return (uint32_t)exitCode;
-	}
+    if (!isWow64)
+    {
+        TerminateProcess(hProcess, 0);
+        return eInjectFailedBitMismatch;
+    }
 #endif
-
 	// misc
 	InjectDLL(hProcess, L"kernel32.dll");
 
 	// D3D11
 	InjectDLL(hProcess, L"d3d9.dll");
 
-	InjectDLL(hProcess, renderdocPath);
+    InjectDLL(hProcess, dllpath);
     
-	uintptr_t loc = FindRemoteDLL(pid, L"dissectorinjectordll.dll");
+    uintptr_t loc = FindRemoteDLL(pid, dllNameL);
 	
 	unsigned int remoteident = 0;
 
@@ -303,5 +264,5 @@ unsigned int InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int 
 
 	CloseHandle(hProcess);
 
-	return remoteident;
+	return eInjectSuccess;
 }

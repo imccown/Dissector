@@ -39,12 +39,12 @@ struct ThumbnailData
 struct ThumbnailPendingRequest
 {
     ThumbnailPendingRequest(){}
-    ThumbnailPendingRequest( __int64 iId, int iEvent, QStandardItem* iDestination ):
+    ThumbnailPendingRequest( unsigned __int64 iId, int iEvent, QStandardItem* iDestination ):
         mId( iId ),
         mEventNum( iEvent ),
         mDestination( iDestination ) {}
 
-    __int64         mId;
+    unsigned __int64 mId;
     int             mEventNum;
     QStandardItem*  mDestination;
 };
@@ -113,10 +113,10 @@ private:
        void HandleClearedRenderStateOverrides();
 
        void RegisterRenderStateTypes();
-       void RequestThumbnail( int iEventNum, char* iEventData, unsigned int iType,
+       void RequestThumbnail( int iEventNum, unsigned __int64, unsigned int iType,
                               QStandardItem* iDestination );
 
-       void RequestTexture( int iEventNum, char* iEventData, unsigned int iType );
+       void RequestTexture( int iEventNum, unsigned __int64, unsigned int iType );
 
        void CreateTextureWindow( unsigned int iType, bool iDebuggable );
        void TextureWindowClosed( TextureViewerFast* iWindow );

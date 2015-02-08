@@ -24,4 +24,10 @@
  * THE SOFTWARE.
  ******************************************************************************/
 
-unsigned int InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int waitForDebugger );
+enum InjectReturns {
+    eInjectSuccess = 0,
+    eInjectFailed, 
+    eInjectFailedBitMismatch,
+};
+
+InjectReturns InjectIntoProcess(unsigned int pid, bool waitForExit, unsigned int waitForDebugger);

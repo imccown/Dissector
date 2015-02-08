@@ -88,7 +88,7 @@ LRESULT CALLBACK WinProcOverride(HWND hWnd,UINT uint_Message,WPARAM wParam,LPARA
     LRESULT res = CallWindowProc(gSavedWinProc, hWnd,uint_Message,wParam,lParam);
     if( !gKeepRunning )
     {
-        SetWindowLongPtr( hWnd, GWL_WNDPROC, (LONG)gSavedWinProc );
+        SetWindowLongPtr( hWnd, GWLP_WNDPROC, (LONG_PTR)gSavedWinProc );
         gSavedWinProc = NULL;
     }
     return res;
@@ -98,7 +98,7 @@ void SlaveEnded()
 {
     if( gSavedWinProc )
     {
-        SetWindowLongPtr( gHWND, GWL_WNDPROC, (LONG)gSavedWinProc );
+        SetWindowLongPtr(gHWND, GWLP_WNDPROC, (LONG_PTR)gSavedWinProc);
     }
 }
 
@@ -143,10 +143,10 @@ void PresentInternal( IDirect3DDevice9* iDevice, HRESULT res )
         Dissector::EndFrame( iDevice );
         DissectorDX9::SetUIPumpFunction( PumpFunction );
         gKeepRunning = true;
-        gSavedWinProc = (WNDPROC)GetWindowLongPtr( gHWND, GWL_WNDPROC );
+        gSavedWinProc = (WNDPROC)GetWindowLongPtr( gHWND, GWLP_WNDPROC );
         if( gSavedWinProc )
         {
-            SetWindowLongPtr( gHWND, GWL_WNDPROC, (LONG)&WinProcOverride );
+            SetWindowLongPtr( gHWND, GWLP_WNDPROC, (LONG_PTR)&WinProcOverride );
         }
 
         Dissector::SetSlaveEndingCallback( SlaveEnded );

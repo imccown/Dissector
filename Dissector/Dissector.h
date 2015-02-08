@@ -203,8 +203,8 @@ namespace Dissector
         Dissector::RenderState* mFirstRenderState;
         char*                   mDrawCallData; 
         ToolDataItem*           mToolRenderStates;     // Linked list of overridden render states
-        int                     mSizeDrawCallData;
-        int                     mSizeRenderStateData;
+        unsigned int            mSizeDrawCallData;
+        unsigned int            mSizeRenderStateData;
         int                     mEventType; // -1 means a draw call group, -2 means end of draw group
     };
 
@@ -333,7 +333,7 @@ namespace Dissector
         virtual void TestPixelFailure(void* iDevice, unsigned int iEventId, Dissector::PixelLocation iPixel,
                         unsigned int *oFails ) { iDevice; iEventId; iPixel; oFails; }
         virtual void GetMesh(void* iDevice, unsigned int iEventId, unsigned int iType ) { iDevice; iEventId; iType; }
-        virtual void GetEventText( DrawCallData* iDC, size_t iMaxSize, char* oBuffer, size_t& oSize ) { iDC; iMaxSize; oBuffer; oSize; }
+        virtual void GetEventText(DrawCallData* iDC, unsigned int iMaxSize, char* oBuffer, unsigned int& oSize) { iDC; iMaxSize; oBuffer; oSize; }
         virtual void SlaveFrameBegin() {}
         virtual void SlaveFrameEnd() {}
 

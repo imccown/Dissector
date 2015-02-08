@@ -324,8 +324,9 @@ namespace Dissector
     {
         sDissectorData.mCallbacks->ResimulateStart( iDevice );
 
-        int limit = (sDissectorData.mDrawCallLimit >= 0 && iUseFrameLimit) ?
-            std::min( 1+sDissectorData.mDrawCallLimit, sDissectorData.mCaptureSize ) : sDissectorData.mCaptureSize;
+		int dclimit = sDissectorData.mCaptureSize < (1 + sDissectorData.mDrawCallLimit) ? sDissectorData.mCaptureSize : (1 + sDissectorData.mDrawCallLimit);
+
+		int limit = (sDissectorData.mDrawCallLimit >= 0 && iUseFrameLimit) ? dclimit : sDissectorData.mCaptureSize;
 
         DrawCallData* iterEnd = &sDissectorData.mCaptureData[ limit ];
         for( DrawCallData* iter = sDissectorData.mCaptureData; iter != iterEnd; ++iter )
@@ -371,12 +372,12 @@ namespace Dissector
 
     void SendStateTypes()
     {
-        SendResponse( Dissector::RSP_STATETYPES, sDissectorData.mStateTypeBuffer, sDissectorData.mStateTypeBufferSize, 0 );
+        SendResponse( Dissector::RSP_STATETYPES, sDissectorData.mStateTypeBuffer, (unsigned int)sDissectorData.mStateTypeBufferSize, 0 );
     }
 
     void SendEventList()
     {
-        size_t bufferLen = 32*1024;
+        unsigned int bufferLen = 32*1024;
         char* outData = (char*)MallocCallback( bufferLen );
         if( !outData )
             return;
@@ -388,11 +389,11 @@ namespace Dissector
         DrawCallData* iterEnd = &sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ];
         for( DrawCallData* iter = sDissectorData.mCaptureData; iter != iterEnd; ++iter )
         {
-            size_t dataLen = 0;
+            unsigned int dataLen = 0;
             const char* dataPtr = NULL;
             if( iter->mEventType == -1 )
             {
-                dataLen = strlen( iter->mDrawCallData ) + 1;  // Need to copy null char
+                dataLen = (unsigned int)strlen(iter->mDrawCallData) + 1;  // Need to copy null char
                 dataPtr = iter->mDrawCallData;
             }
             else if( iter->mEventType == -2 )
@@ -408,12 +409,12 @@ namespace Dissector
                 }
                 else
                 {
-                    dataLen = strlen( sDissectorData.mEventTypes[ iter->mEventType ].mName ) + 1; // Need to copy null char
+                    dataLen = (unsigned int)strlen(sDissectorData.mEventTypes[iter->mEventType].mName) + 1; // Need to copy null char
                     dataPtr = sDissectorData.mEventTypes[ iter->mEventType ].mName;
                 }
             }
 
-            if( (dataIter + sizeof(int) + sizeof(size_t) + dataLen) >= dataIterEnd ) 
+            if ((dataIter + sizeof(int) + sizeof(unsigned int) + dataLen) >= dataIterEnd)
             {
                 // Buffer needs to grow
                 size_t bufferLen = dataIterEnd - outData;
@@ -448,7 +449,7 @@ namespace Dissector
 
         assert( dataIter <= dataIterEnd );
 
-        SendResponse( Dissector::RSP_EVENTLIST, outData, dataIter - outData, 0 );
+        SendResponse(Dissector::RSP_EVENTLIST, outData, (unsigned int)(dataIter - outData), 0);
 
         FreeCallback( outData );
     }
@@ -480,8 +481,8 @@ namespace Dissector
         SendResponse( Dissector::RSP_EVENTINFO,
             (char*)&iEventNum, sizeof(int),
             (char*)sDissectorData.mCaptureData[iEventNum].mFirstRenderState,
-            sDissectorData.mCaptureData[iEventNum].mSizeRenderStateData,
-            buffer.mPtr, toolDataSize,
+            (unsigned int)sDissectorData.mCaptureData[iEventNum].mSizeRenderStateData,
+            buffer.mPtr, (unsigned int)toolDataSize,
             0 );
     }
 
@@ -512,7 +513,7 @@ namespace Dissector
             enumIter = *(char**)enumIter;
         }
 
-        SendResponse( Dissector::RSP_ENUMTYPES, data, size, 0 );
+        SendResponse(Dissector::RSP_ENUMTYPES, data, (unsigned int)size, 0);
 
         FreeCallback( data );
     }
@@ -587,7 +588,7 @@ namespace Dissector
         data.numFailures = sizeof( data.fails ) / sizeof(unsigned int);
         DrawCallData* debugIter = &sDissectorData.mCaptureData[ iEventId ];
         sDissectorData.mCallbacks->TestPixelFailure( iDevice, iEventId, *pixel, data.fails );
-        SendResponse( Dissector::RSP_TESTPIXELFAILURE, (char*)&data, sizeof(data), 0 );
+        SendResponse(Dissector::RSP_TESTPIXELFAILURE, (char*)&data, (unsigned int)(sizeof(data)), 0);
     }
 
     void OverrideRenderState( void* iDevice, void* iMessageData, unsigned int iDataSize )
@@ -833,8 +834,8 @@ namespace Dissector
             return true;
 
         // Must resize the buffer.
-        size_t bufferSize = sDissectorData.mCaptureDataBufferSize;
-        size_t newBufferSize = 2 * bufferSize;
+        int bufferSize = sDissectorData.mCaptureDataBufferSize;
+        int newBufferSize = 2 * bufferSize;
 
         Dissector::DrawCallData* newBuffer = (Dissector::DrawCallData*)MallocCallback( newBufferSize * sizeof(Dissector::DrawCallData) );
         if( newBuffer == NULL )
@@ -858,7 +859,7 @@ namespace Dissector
             if( !PrepareCaptureDataBufferForAdd() )
                 return;
 
-            int nameLen = strlen( iName )+1;
+            int nameLen = int( strlen( iName )+1 );
             if( !PrepareMiscDataBufferForAdd( nameLen ) )
                 return;
 
@@ -869,10 +870,11 @@ namespace Dissector
             sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mToolRenderStates = 0;
 
 
-            memcpy( sDissectorData.mMiscDataIter, iName, nameLen );
+            sDissectorData.mCaptureData[sDissectorData.mCaptureSize].mDrawCallData = sDissectorData.mMiscDataIter;
+
+            memcpy(sDissectorData.mMiscDataIter, iName, nameLen);
             sDissectorData.mMiscDataIter += nameLen;
 
-            sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ].mDrawCallData = sDissectorData.mMiscDataIter;
             ++sDissectorData.mCaptureSize;
         }
     }
@@ -894,7 +896,7 @@ namespace Dissector
         }
     }
 
-    void RegisterEvent( void* iDevice, int iEventType, const void* iEventData, unsigned int iDataSize )
+    void RegisterEvent(void* iDevice, int iEventType, const void* iEventData, unsigned int iDataSize)
     {
         if( sDissectorData.mMiscDataBuffer )
         {
@@ -917,7 +919,7 @@ namespace Dissector
         }
     }
 
-    void AddRenderStateEntries( void* iRenderStateData, unsigned int iDataSize )
+    void AddRenderStateEntries(void* iRenderStateData, unsigned int iDataSize)
     {
         if( !PrepareMiscDataBufferForAdd( iDataSize ) )
         {
@@ -961,7 +963,7 @@ namespace Dissector
 
     void RegisterEventType( unsigned int iType, unsigned int iFlags, const char* iName )
     {
-        int nameLen = strlen( iName );
+        int nameLen = int( strlen( iName ) );
         assert( (sDissectorData.mEventNames + nameLen) < sDissectorData.mEventNamesEnd );
 
         sDissectorData.mEventTypes[ sDissectorData.mNumEventTypes ].mFlags = iFlags;
@@ -1002,7 +1004,7 @@ namespace Dissector
 #endif
 
             allocSize += sizeof(unsigned int) * 4;
-            allocSize += iter->mName ? strlen( iter->mName ) : 0;
+            allocSize += iter->mName ? int( strlen( iter->mName ) ) : 0;
         }
 
 #ifdef CHECK_FOR_DUPE_STATE_TYPES
@@ -1036,7 +1038,7 @@ namespace Dissector
 
             if( iter->mName )
             {
-                unsigned int len = strlen( iter->mName );
+                unsigned int len = (unsigned int)strlen( iter->mName );
                 StoreBufferData( len, insertPointer );
 
                 memcpy( insertPointer, iter->mName, len );
@@ -1056,7 +1058,7 @@ namespace Dissector
         va_list argList;
 
         int count = 0;
-        int size = sizeof(unsigned int) * 3 + sizeof(char*);
+        unsigned int size = sizeof(unsigned int) * 3 + sizeof(char*);
 
         va_start( argList, iVisualizerId );
 
@@ -1065,7 +1067,7 @@ namespace Dissector
         while( iter != NULL )
         {
             ++count;
-            size += strlen( iter );
+            size += (unsigned int)strlen( iter );
             size += sizeof(unsigned int)*2;
             value = va_arg( argList, unsigned int );
             iter = va_arg( argList, const char* );
@@ -1079,7 +1081,7 @@ namespace Dissector
         *(char**)data = sDissectorData.mEnumData;
         sDissectorData.mEnumData = data;
         data += sizeof(char*);
-
+            
         StoreBufferData( size, data );
         StoreBufferData( count, data );
         StoreBufferData( iVisualizerId, data );
@@ -1093,7 +1095,7 @@ namespace Dissector
             *(unsigned int*)data = value;
             StoreBufferData( value, data );
 
-            unsigned int strsize = strlen(iter);
+            unsigned int strsize = (unsigned int)strlen(iter);
             StoreBufferData( strsize, data );
 
             memcpy( data, iter, strsize );
@@ -1114,8 +1116,8 @@ namespace Dissector
         StoreBufferData( iSizeY, iter );
         StoreBufferData( iPitch, iter );
 
-        SendResponse( Dissector::RSP_CURRENTRENDERTARGET, header, sizeof(header), 
-            iImage, iSizeY * iPitch, 0 );
+        SendResponse(Dissector::RSP_CURRENTRENDERTARGET, header, (unsigned int)(sizeof(header)),
+            iImage, (unsigned int)(iSizeY * iPitch), 0);
     }
 
     void ImageRetrievalCallback( void* iTexture, unsigned int iRSType, void* iImage, unsigned int iSizeX,
@@ -1129,8 +1131,8 @@ namespace Dissector
         StoreBufferData( iSizeY, iter );
         StoreBufferData( iPitch, iter );
 
-        SendResponse( Dissector::RSP_IMAGE, header, sizeof(header), 
-            iImage, iSizeY * iPitch, 0 );
+        SendResponse(Dissector::RSP_IMAGE, header, (unsigned int)(sizeof(header)),
+            iImage, (unsigned int)(iSizeY * iPitch), 0);
     }
 
     void ThumbnailRetrievalCallback( void* iTexture, unsigned int iVisualizerType, void* iImage, unsigned int iSizeX,
@@ -1145,11 +1147,11 @@ namespace Dissector
         StoreBufferData( iPitch, iter );
         StoreBufferData( iEventNum, iter );
 
-        SendResponse( Dissector::RSP_THUMBNAIL, header, sizeof(header), 
-            iImage, iSizeY * iPitch, 0 );
+        SendResponse(Dissector::RSP_THUMBNAIL, header, (unsigned int)(sizeof(header)),
+            iImage, (unsigned int)(iSizeY * iPitch), 0);
     }
 
-    void ShaderDebugDataCallback( char* iDataBlob, unsigned int iDataSize, int iEventId, unsigned int loc0, unsigned int loc1 )
+    void ShaderDebugDataCallback(char* iDataBlob, unsigned int iDataSize, int iEventId, unsigned int loc0, unsigned int loc1)
     {
         struct
         {
@@ -1161,7 +1163,7 @@ namespace Dissector
         message.eventId = iEventId;
         message.loc0 = loc0;
         message.loc1 = loc1;
-        SendResponse( Dissector::RSP_SHADERDEBUGINFO, &message, sizeof(message), iDataBlob, iDataSize, 0 );
+        SendResponse(Dissector::RSP_SHADERDEBUGINFO, &message, (unsigned int)(sizeof(message)), iDataBlob, (unsigned int)iDataSize, 0);
     }
 
     void ShaderDebugFailedCallback( int iEventId, unsigned int loc0, unsigned int loc1 )
@@ -1176,13 +1178,13 @@ namespace Dissector
         message.eventId = iEventId;
         message.loc0 = loc0;
         message.loc1 = loc1;
-        SendResponse( Dissector::RSP_SHADERDEBUGFAILED, &message, sizeof(message), 0 );
+        SendResponse(Dissector::RSP_SHADERDEBUGFAILED, &message, (unsigned int)(sizeof(message)), 0);
     }
 
 
     // Call from GetMeshCallback to supply the mesh.
     void MeshDebugDataCallback( unsigned int iEventId, Dissector::PrimitiveType::Type iType,
-        unsigned int iNumPrims, char* iVertsBlob, unsigned int iVertsSize, char* iIndices, unsigned int iIndicesSize )
+        unsigned int iNumPrims, char* iVertsBlob, unsigned int iVertsSize, char* iIndices, unsigned int iIndicesSize)
     {
         struct
         {
@@ -1195,13 +1197,13 @@ namespace Dissector
         messageHeader.eventId = iEventId;
         messageHeader.primtype = iType;
         messageHeader.numPrims = iNumPrims;
-        messageHeader.vertSize = iVertsSize;
-        messageHeader.indexSize = iIndicesSize;
+        messageHeader.vertSize = (unsigned int)iVertsSize;
+        messageHeader.indexSize = (unsigned int)iIndicesSize;
 
         if( iIndicesSize )
-            SendResponse( Dissector::RSP_MESH, &messageHeader, sizeof(messageHeader), iVertsBlob, iVertsSize, iIndices, iIndicesSize, 0 );
+            SendResponse(Dissector::RSP_MESH, &messageHeader, sizeof(messageHeader), iVertsBlob, (unsigned int)iVertsSize, iIndices, (unsigned int)iIndicesSize, 0);
         else
-            SendResponse( Dissector::RSP_MESH, &messageHeader, sizeof(messageHeader), iVertsBlob, iVertsSize, 0 );
+            SendResponse(Dissector::RSP_MESH, &messageHeader, sizeof(messageHeader), iVertsBlob, (unsigned int)iVertsSize, 0);
     }
 
     // ------------------------------------------------------------------------------------

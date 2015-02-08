@@ -1401,6 +1401,11 @@ namespace DissectorDX9
         }
 
         info = ShaderDebugDX9::GetShaderInfo( shaderData, shaderSize, D3DDevice );
+        if (!info.mDebugHeader)
+        {
+            rvalue = false;
+            goto DebugShaderCleanup;
+        }
 
         regPtr = (RegisterData*)Dissector::MallocCallback( sizeof(RegisterData) * info.mInstructionCount );
         unsigned int regSize = 0;
@@ -1509,8 +1514,8 @@ namespace DissectorDX9
         for( int ii = 0; ii < blobHeader.mNumFilenames; ++ii )
         {
             char* str = info.GetFilename( ii );
-            sizeofFilenames += strlen( str );
-            sizeofFilenames += sizeof( int ); // for the leading size of the string
+            sizeofFilenames += (unsigned int)strlen( str );
+            sizeofFilenames += (unsigned int)sizeof(int); // for the leading size of the string
         }
 
         blobHeader.mNumVariables = 0;
@@ -1524,7 +1529,7 @@ namespace DissectorDX9
             _D3DXSHADER_TYPEINFO* typeInfo = 
                 info.DebugOffsetToPointer< _D3DXSHADER_TYPEINFO* >( entry.offsetToTypeInfo );
             
-            int nameLength = strlen( name );
+            unsigned int nameLength = (unsigned int)strlen(name);
             if( typeInfo->StructMembers )
             {
                 blobHeader.mNumVariables += typeInfo->StructMembers;
@@ -1537,7 +1542,7 @@ namespace DissectorDX9
 
                     char* memName = info.DebugOffsetToPointer< char* >( memInfo[jj].Name );
                     sizeofVariableNames += nameLength;
-                    sizeofVariableNames += strlen( memName ) + 1; // +1 for '.'
+                    sizeofVariableNames += (unsigned int)strlen(memName) + 1; // +1 for '.'
                     sizeofVariableNames += sizeof( int ); // for the leading size of the string
                     blobHeader.mVariableBlockSize += memtypeInfo->Columns * memtypeInfo->Rows * sizeof(float);
                 }
@@ -1690,7 +1695,7 @@ namespace DissectorDX9
 
         if( rvalue && validResults )
         {
-            Dissector::ShaderDebugDataCallback( debugBlob, iter - debugBlob, iEventId, pixelX, pixelY );
+            Dissector::ShaderDebugDataCallback(debugBlob, (unsigned int)(iter - debugBlob), iEventId, pixelX, pixelY);
             if( debugBlob )
             {
                 Dissector::FreeCallback( debugBlob );
@@ -1879,9 +1884,9 @@ DebugShaderCleanup:
     {
         if( Dissector::IsCapturing() )
         {
-            size_t indexSize = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
+            unsigned int indexSize = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
             int numIndices = GetNumVertices( PrimitiveType, PrimitiveCount );
-            int dataSize = sizeof(DrawIndexedUpData) + VertexStreamZeroStride * NumVertices + numIndices * indexSize;
+            int dataSize = (unsigned int)(sizeof(DrawIndexedUpData)) + VertexStreamZeroStride * NumVertices + numIndices * indexSize;
             assert( dataSize < 2048 );
 
             char* drawcalldata = (char*)sDX9Data.mUPDataBuffer;
@@ -2624,7 +2629,7 @@ DebugShaderCleanup:
                 numPrimitives, (char*)meshData, bufferSize, (char*)indexData, indexSize );
         }
        
-        virtual void GetEventText( Dissector::DrawCallData* iDC, size_t iMaxSize, char* oBuffer, size_t& oSize )
+        virtual void GetEventText(Dissector::DrawCallData* iDC, unsigned int iMaxSize, char* oBuffer, unsigned int& oSize)
         {
             DrawBase* dc = (DrawBase*)(iDC->mDrawCallData);
             switch( iDC->mEventType )
@@ -2671,7 +2676,7 @@ DebugShaderCleanup:
             }
 
             oBuffer[iMaxSize-1] = 0;
-            oSize = strlen( oBuffer ) + 1;
+            oSize = (unsigned int)strlen(oBuffer) + 1;
         }
 
         virtual void SlaveFrameBegin()

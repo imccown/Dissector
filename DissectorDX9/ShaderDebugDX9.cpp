@@ -846,7 +846,7 @@ namespace ShaderDebugDX9
         // Write the shader end instruction.
         StoreBufferData<DWORD>( D3DSIO_END, oIter );
 
-        oDataSize = oIter - (char*)oData;
+        oDataSize = UINT(oIter - (char*)oData);
 
         return true;
     }

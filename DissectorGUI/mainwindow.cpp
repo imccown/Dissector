@@ -1304,8 +1304,17 @@ void MainWindow::PopulateEventInfo()
         case(Dissector::RSTF_VISUALIZE_RESOURCE_RENDERTARGET):
         {
             editable->setIcon( QIcon() );
-            RequestThumbnail( eventNum, eventData, rstype.mVisualizerType, editable );
-            value.sprintf( "0x%x", *(unsigned int*)eventData );
+            unsigned __int64 eventptr;
+            if( rs->mSize == 8 ) {
+                eventptr = *(unsigned __int64*)eventData;
+                value.sprintf( "0x%llu", eventptr );
+            } else {
+                eventptr = *(unsigned int*)eventData;
+                value.sprintf( "0x%x", eventptr );
+            }
+
+            RequestThumbnail( eventNum, eventptr, rstype.mVisualizerType, editable );
+
             editable->setText( value );
         }   break;
 
@@ -1317,7 +1326,10 @@ void MainWindow::PopulateEventInfo()
         case(Dissector::RSTF_VISUALIZE_RESOURCE_COMPUTE_SHADER):
         case(Dissector::RSTF_VISUALIZE_RESOURCE_BUFFER):
         case(Dissector::RSTF_VISUALIZE_RESOURCE_VERTEXTYPE):
-            value.sprintf( "0x%x", *(unsigned int*)eventData );
+            if( rs->mSize == 8 )
+                value.sprintf( "0x%llu", *(unsigned __int64*)eventData );
+            else
+                value.sprintf( "0x%x", *(unsigned int*)eventData );
             editable->setText( value );
             break;
         default:
@@ -1372,10 +1384,10 @@ void MainWindow::PopulateEnumInfo()
 
 }
 
-void MainWindow::RequestTexture( int iEventNum, char* iEventData, unsigned int iType )
+void MainWindow::RequestTexture( int iEventNum, unsigned __int64 iEventData, unsigned int iType )
 {
     iEventData;
-    __int64 id = iType;//*(unsigned int*)&iEventData;
+    unsigned __int64 id = iType;//*(unsigned int*)&iEventData;
     if( !id )
         return;
 
@@ -1405,9 +1417,9 @@ void MainWindow::RequestTexture( int iEventNum, char* iEventData, unsigned int i
     SendCommand( Dissector::CMD_GETIMAGE, data, sizeof(data) );
 }
 
-void MainWindow::RequestThumbnail( int iEventNum, char* iEventData, unsigned int iType, QStandardItem* ioDestination )
+void MainWindow::RequestThumbnail( int iEventNum, unsigned __int64 iEventData, unsigned int iType, QStandardItem* ioDestination )
 {
-    __int64 id = *(unsigned int*)iEventData;
+    unsigned __int64 id = iEventData;
     if( !id )
         return;
 

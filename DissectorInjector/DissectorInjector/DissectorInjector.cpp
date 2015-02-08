@@ -5,10 +5,11 @@
 #include "stdafx.h"
 #include "Injection.h"
 #include "DissectorInjectorDLL\DLLExports.h"
+#include <string>
 
 int wmain(int argc, WCHAR* argv[])
 {
-    DoNothing();
+    DoNothing(); // Necessary for some reason. I think it's because it calls in to the DLL. Also possibly magic.
 
 	STARTUPINFOW startinfo;
 	PROCESS_INFORMATION procinfo;
@@ -56,8 +57,35 @@ int wmain(int argc, WCHAR* argv[])
     if( !ret )
         return -1;
 
-    InjectIntoProcess( procinfo.dwProcessId, false, waitForDebugger ? 60 : 0 );
-    ResumeThread( procinfo.hThread );
+    InjectReturns injectres = InjectIntoProcess(procinfo.dwProcessId, false, waitForDebugger ? 60 : 0);
+    switch (injectres)
+    {
+    case(eInjectSuccess) : ResumeThread(procinfo.hThread); break;
+    case(eInjectFailedBitMismatch) :
+    {
+        std::wstring exeName = argv[0];
+#ifdef WIN64
+        exeName = exeName.substr(0, exeName.length() - 8);
+        exeName += L".exe";
+#else
+        exeName = exeName.substr(0, exeName.length() - 4);
+        exeName += L"_x64.exe";
+#endif
+        std::wstring commandLine;
+        for (WCHAR** iter = &argv[1], **end = &argv[argc]; iter < end; ++iter)
+        {
+            commandLine += ' ';
+            commandLine += '"';
+            commandLine += *iter;
+            commandLine += '"';
+        }
+
+        BOOL ret = CreateProcess(exeName.c_str(), (LPWSTR)commandLine.c_str(), NULL, NULL, FALSE,
+            CREATE_NO_WINDOW, NULL, dir, &startinfo, &procinfo);
+
+    }break;
+    default: break;
+    }
 
 	return 0;
 }
