@@ -349,6 +349,9 @@ void TextureViewerFast::slotContextAction(QAction* iAction)
 
 void TextureViewerFast::UpdateLocalPos( QPoint localPos )
 {
+    if( !mImageData )
+        return;
+
     QPoint pos = GetTexturePos( localPos );
     size_t pixelSize = Dissector::GetPixelSize( mPixelType );
     char* pixelPtr = mImageData + (pixelSize * ( pos.x() + (pos.y() * mImageSizeX) ) );

@@ -232,3 +232,6 @@ $RECYCLE.BIN/
 *.pso
 *.o
 Dissector/Dissector (Restored) 09-22-2014 20.32.cpp
+DissectorGUI/textureviewerfast.cpp.bY6100
+DissectorGUI/textureviewerfast.cpp.xY6100
+bin/cache/pingme.txt
