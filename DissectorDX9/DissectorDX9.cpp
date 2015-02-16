@@ -1188,7 +1188,8 @@ namespace DissectorDX9
             DepthBufferReplacement* delPtr = iter;
             iter = iter->mNext;
             ULONG ref = delPtr->mReplacement->Release();
-            ref = delPtr->mTexture->Release();
+            if( delPtr->mTexture )
+                ref = delPtr->mTexture->Release();
             Dissector::FreeCallback( delPtr );
         }
 
@@ -1913,14 +1914,47 @@ DebugShaderCleanup:
                                             VertexStreamZeroStride );
     }
 
-    void GetDepthForTextureImage( void* iDevice, void* iTexture, unsigned int iRSType, unsigned int iEventId )
+    bool ConvertRenderTargetToTexture( void* iDevice, IDirect3DSurface9* iSurface, IDirect3DTexture9** oTex )
+    {
+        IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
+
+        D3DSURFACE_DESC desc;
+        iSurface->GetDesc( &desc );
+
+        if( desc.Format == MAKEFOURCC( 'N', 'U', 'L', 'L' ) )
+            return false;
+
+        ScopedRelease<IDirect3DTexture9> tex;
+        HRESULT res = D3DDevice->CreateTexture(desc.Width, desc.Height, 1, 0, desc.Format, D3DPOOL_SYSTEMMEM, &tex.mPtr, NULL);
+        if (res != S_OK || !tex.mPtr)
+            return false;
+
+        ScopedRelease<IDirect3DSurface9> mip;
+        tex->GetSurfaceLevel( 0, &mip.mPtr );
+        if( S_OK != D3DDevice->GetRenderTargetData( iSurface, mip.mPtr ) )
+            return false;
+
+        res = D3DDevice->CreateTexture(desc.Width, desc.Height, 1, 0, desc.Format, D3DPOOL_DEFAULT, oTex, NULL);
+        if (res != S_OK || !*oTex)
+            return false;
+
+        if( D3DDevice->UpdateTexture( tex.mPtr, *oTex ) != S_OK )
+        {
+            (*oTex)->Release();
+            return false;
+        }
+
+        return true;
+    }
+
+    bool GetDepthForTextureImage( void* iDevice, void* iTexture, unsigned int iRSType, unsigned int iEventId )
     {
         IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
 
         Dissector::DrawCallData* drawIter = NULL;
         drawIter = ExecuteToEvent( iDevice, iEventId+1 );
         if( !drawIter )
-            return;
+            return false;
 
         ScopedEndFrame endScene( D3DDevice );
 
@@ -1929,74 +1963,58 @@ DebugShaderCleanup:
 
         IDirect3DTexture9* surface = GetDepthBufferTexture( ds.mPtr );
         if( !surface )
-            return;
+            return false;
 
         D3DSURFACE_DESC desc;
         surface->GetLevelDesc( 0, &desc );
 
-        unsigned int minVal = 0xFFFFFFFF, maxVal = 0;
         if( desc.Format == MAKEFOURCC( 'I', 'N', 'T', 'Z' ) )
         {
-            ScopedRelease<IDirect3DSurface9> destMinMax, dest;
-            D3DDevice->CreateRenderTarget( desc.Width, desc.Height, D3DFMT_R32F, D3DMULTISAMPLE_NONE, 0, true, &destMinMax.mPtr, NULL );
-            D3DDevice->CreateRenderTarget( desc.Width, desc.Height, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, true, &dest.mPtr, NULL );
-            if( dest.mPtr && destMinMax.mPtr )
+            ScopedRelease<IDirect3DSurface9> dest;
+            D3DDevice->CreateRenderTarget( desc.Width, desc.Height, D3DFMT_R32F, D3DMULTISAMPLE_NONE, 0, true, &dest.mPtr, NULL );
+            if( dest.mPtr )
             {
                 RenderTextureToRT( D3DDevice, surface, dest, NULL, true );
 
                 D3DLOCKED_RECT rect;
                 HRESULT res = dest->LockRect( &rect, NULL, D3DLOCK_READONLY );
-                Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch );
 
-                for( unsigned int ii = 0; ii < desc.Height; ++ii )
-                {
-                    unsigned int* iter = (unsigned int*)((char*)(rect.pBits) + rect.Pitch * ii);
-                    unsigned int* endIter = iter + desc.Width;
-                    while( iter < endIter )
-                    {
-                        minVal = min( minVal, *iter );
-                        maxVal = min( minVal, *iter );
-                        ++iter;
-                    }
-
-                }
-
+                Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch, Dissector::PIXEL_R32F );
                 dest->UnlockRect();
+
             }
         }
+
+        return true;
     }
 
-    void GetRTForTextureImage( void* iDevice, void* iTexture, unsigned int iRSType, unsigned int iNum )
+    bool GetRTForTextureImage( void* iDevice, void* iTexture, unsigned int iRSType, unsigned int iNum )
     {
         IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
+
+        ScopedRelease<IDirect3DTexture9> gputex;
 
         ScopedRelease<IDirect3DSurface9> rt, newRt;
         D3DDevice->GetRenderTarget( iNum, &rt.mPtr );
         if( !rt )
-            return;
+            return false;
 
         D3DSURFACE_DESC desc;
-
         rt->GetDesc( &desc );
-
-        if( desc.Format != D3DFMT_A8R8G8B8 )
-        {
-            // TODO: Make this work.
-        }
+        if( !ConvertRenderTargetToTexture( iDevice, rt, &gputex.mPtr ) )
+            return false;
 
         D3DDevice->CreateRenderTarget( desc.Width, desc.Height, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, true, &newRt.mPtr, NULL );
         if( !newRt )
-            return;
+            return false;
 
-        D3DDevice->StretchRect( rt, NULL, newRt, NULL, D3DTEXF_POINT );
+        RenderTextureToRT( D3DDevice, gputex.mPtr, newRt.mPtr, NULL, false );
 
         D3DLOCKED_RECT rect;
-        newRt->LockRect( &rect, NULL, 0 );
-        if( rect.pBits )
-        {
-            Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch );
-        }
-        newRt->UnlockRect();
+        HRESULT res = newRt->LockRect( &rect, NULL, D3DLOCK_READONLY );
+        Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch, Dissector::PIXEL_A8R8G8B8 );
+
+        return true;
     }
 
     void GetTextureThumbnailInternal( void* iDevice, void* iTexture, unsigned int iVisualizerType, int iEventNum, void* iIDOveride = NULL )
@@ -2033,54 +2051,25 @@ DebugShaderCleanup:
         }
     }
 
-    void GetRTThumbnail( void* iDevice, void* iTexture, unsigned int iVisualizerType, int iEventNum )
+    bool GetRTThumbnail( void* iDevice, void* iTexture, unsigned int iVisualizerType, int iEventNum )
     {
         IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
 
         ScopedRelease<IDirect3DSurface9> rt, newRt;
         D3DDevice->GetRenderTarget( 0, &rt.mPtr );
         if( !rt )
-            return;
+            return false;
 
         D3DSURFACE_DESC desc;
-
         rt->GetDesc( &desc );
 
-        if( desc.Format == MAKEFOURCC( 'N', 'U', 'L', 'L' ) )
-            return;
+        ScopedRelease<IDirect3DTexture9> gputex;
+        if( !ConvertRenderTargetToTexture( iDevice, rt.mPtr, &gputex.mPtr ) )
+            return false;
 
-        D3DDevice->CreateRenderTarget( desc.Width, desc.Height, desc.Format, D3DMULTISAMPLE_NONE, 0, true, &newRt.mPtr, NULL );
-        if( !newRt )
-            return;
+        GetTextureThumbnailInternal( iDevice, gputex.mPtr, iVisualizerType, iEventNum, iTexture );
 
-        D3DDevice->StretchRect( rt, NULL, newRt, NULL, D3DTEXF_POINT );
-
-        D3DLOCKED_RECT rect;
-        if( S_OK == newRt->LockRect( &rect, NULL, 0 ) && rect.pBits )
-        {
-            ScopedRelease<IDirect3DTexture9> tempTex;
-            if( S_OK == D3DDevice->CreateTexture( desc.Width, desc.Height, 1, D3DUSAGE_DYNAMIC, desc.Format, D3DPOOL_DEFAULT, &tempTex.mPtr, NULL ) )
-            {
-                D3DLOCKED_RECT writeRect;
-                HRESULT res = tempTex->LockRect( 0, &writeRect, NULL, 0 );
-                if( S_OK == res )
-                {
-                    char* readIter = (char*)rect.pBits;
-                    char* writeIter = (char*)writeRect.pBits;
-                    int pitch = min( writeRect.Pitch, rect.Pitch );
-                    for( unsigned int ii = 0; ii < desc.Height; ++ii, writeIter += writeRect.Pitch, readIter += rect.Pitch )
-                    {
-                        memcpy( writeIter, readIter, pitch );
-                    }
-
-                    tempTex->UnlockRect( 0 );
-                    GetTextureThumbnailInternal( iDevice, tempTex.mPtr, iVisualizerType, iEventNum, iTexture );
-                }
-            }
-
-            //Dissector::CurrentRTRetrievalCallback( rect.pBits, desc.Width, desc.Height, rect.Pitch );
-            newRt->UnlockRect();
-        }
+        return true;
     }
 
     bool EndFrameExternal( void* iDevice )
@@ -2111,12 +2100,14 @@ DebugShaderCleanup:
 
         virtual void ResimulateStart(void* iDevice)
         {
+            sDX9Data.mLastEvent = NULL;
             BeginFrame( iDevice );
         }
 
         virtual void ResimulateEvent(void* iDevice, const Dissector::DrawCallData& iData, bool iRecordTiming, Dissector::TimingData* oTiming )
         {
             DissectorDX9::ResimulateEvent( iDevice, iData, iRecordTiming, oTiming );
+            sDX9Data.mLastEvent = &iData;
         }
 
         virtual void GatherStatsForEvent(void* iDevice, const Dissector::DrawCallData& iData)
@@ -2188,6 +2179,21 @@ DebugShaderCleanup:
 
         virtual bool ResimulateEnd(void* iDevice)
         { 
+            if( sDX9Data.mLastEvent )
+            {
+                if( sDX9Data.mLastEvent->mEventType == ET_DRAWINDEXED ||
+                    sDX9Data.mLastEvent->mEventType == ET_DRAW ||
+                    sDX9Data.mLastEvent->mEventType == ET_DRAWINDEXEDUP ||
+                    sDX9Data.mLastEvent->mEventType == ET_DRAWUP )
+                {
+                    // TODO: Make this use a special shader to show wireframe stuff.
+                    //IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
+                    //ResetDevice( D3DDevice );
+                    //D3DDevice->SetRenderState( D3DRS_FILLMODE, D3DFILL_SOLID );
+                    //ExecuteEvent( D3DDevice, *sDX9Data.mLastEvent );
+                }
+            }
+
             return EndFrameExternal( iDevice );
         }
 
@@ -2270,7 +2276,7 @@ DebugShaderCleanup:
 
                 D3DLOCKED_RECT rect;
                 HRESULT res = dest->LockRect( &rect, NULL, D3DLOCK_READONLY );
-                Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch );
+                Dissector::ImageRetrievalCallback( iTexture, iRSType, rect.pBits, desc.Width, desc.Height, rect.Pitch, Dissector::PIXEL_A8R8G8B8 );
                 dest->UnlockRect();
             }
 

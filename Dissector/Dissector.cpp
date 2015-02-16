@@ -1121,15 +1121,16 @@ namespace Dissector
     }
 
     void ImageRetrievalCallback( void* iTexture, unsigned int iRSType, void* iImage, unsigned int iSizeX,
-                                 unsigned int iSizeY, unsigned int iPitch )
+                                 unsigned int iSizeY, unsigned int iPitch, PixelTypes iType )
     {
-        char header[ 8 + 4 + 4 + 4 + 4 ];
+        char header[ 8 + 4 + 4 + 4 + 4 + 4 ];
         char* iter = header;
         StoreBufferData( __int64(iTexture), iter );
         StoreBufferData( iRSType, iter );
         StoreBufferData( iSizeX, iter );
         StoreBufferData( iSizeY, iter );
         StoreBufferData( iPitch, iter );
+        StoreBufferData<unsigned int>( iType, iter );
 
         SendResponse(Dissector::RSP_IMAGE, header, (unsigned int)(sizeof(header)),
             iImage, (unsigned int)(iSizeY * iPitch), 0);

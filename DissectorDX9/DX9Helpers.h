@@ -44,7 +44,7 @@ namespace DissectorDX9
     IDirect3DSurface9* GetDepthBufferReplacement( IDirect3DDevice9* iD3DDevice, IDirect3DSurface9* iSurface );
 
     void RenderTextureToRT( IDirect3DDevice9* iD3DDevice, IDirect3DBaseTexture9* iTexture, IDirect3DSurface9* iRenderTarget,
-        IDirect3DPixelShader9* overrideShader = NULL, bool iInFrame = false );
+        IDirect3DPixelShader9* overrideShader = NULL, bool iInFrame = false, float* extraConstants = NULL, int numConstants = 0 );
 
     UINT GetVertexCountFromPrimitiveCount( D3DPRIMITIVETYPE iPrimitiveType, UINT iNumElements );
     UINT GetPrimtiveCountFromVertexCount( D3DPRIMITIVETYPE iPrimitiveType, UINT iNumVertices );

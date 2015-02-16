@@ -98,6 +98,13 @@ TextureViewerFast::TextureViewerFast(QWidget *parent) :
     mGraphicsView->viewport()->addAction( &mToggleAlpha );
 
     connect( &mToggleAlpha, SIGNAL(triggered()), this, SLOT(on_actionToggleAlpha_triggered()) );
+
+
+    mImageSizeX = 0;
+    mImageSizeY = 0;
+    mPixelType = Dissector::PIXEL_A8R8G8B8;
+    mImageData = NULL;
+
 }
 
 TextureViewerFast::~TextureViewerFast()
@@ -105,6 +112,10 @@ TextureViewerFast::~TextureViewerFast()
     if( mMainWindow )
     {
         mMainWindow->TextureWindowClosed( this );
+    }
+    if( mImageData )
+    {
+        free( mImageData );
     }
     delete ui;
 }
@@ -131,10 +142,83 @@ void TextureViewerFast::ScrollDelta( const QPoint& iDelta )
     mGraphicsView->verticalScrollBar()->setValue( vert );
 }
 
-void TextureViewerFast::SetPixmap( const QPixmap& iPixmap )
+void TextureViewerFast::PrepareFloatImage()
 {
-    mPixMapItem.setPixmap(iPixmap);
-    mImage = iPixmap.toImage();
+    unsigned int localPitch = mImageSizeX * 4;
+    // Find min/max values.
+    float fMin = FLT_MAX, fMax = FLT_MIN;
+    {
+    for( float *iter = (float*)mImageData, *end = (float*)(mImageData + (mImageSizeY * localPitch));
+         iter < end; ++iter )
+    {
+        fMin = std::min( fMin, *iter );
+        fMax = std::max( fMax, *iter );
+    }
+    }
+
+    float mul = fMax - fMin;
+    if( mul <= FLT_EPSILON )
+        mul = FLT_EPSILON;
+    mul = 1.f / mul;
+
+
+    char* tempData = (char*)malloc( mImageSizeX * mImageSizeY * 4 );
+    unsigned int* dstIter = (unsigned int*)tempData;
+    for( float *iter = (float*)mImageData, *end = (float*)(mImageData + (mImageSizeY * localPitch));
+         iter < end; ++iter )
+    {
+        float val = (*iter - fMin) * mul;
+        unsigned char byte = (unsigned char)(val * 255.f);
+        *dstIter = 0xFF000000 | (byte << 16);
+        ++dstIter;
+    }
+    QImage image( (uchar*)tempData, mImageSizeX, mImageSizeY, localPitch,
+                  QImage::Format_ARGB32 );
+    SetImage( image );
+    free( tempData );
+}
+
+void TextureViewerFast::SetImageData( Dissector::PixelTypes iType, unsigned int iSizeX, unsigned int iSizeY,
+                                      unsigned int iPitch, void* iData )
+{
+    if( mImageData )
+        free( mImageData );
+
+    mImageSizeX = iSizeX;
+    mImageSizeY = iSizeY;
+    mPixelType = iType;
+
+    size_t pixelSize = Dissector::GetPixelSize( mPixelType );
+    size_t imageSize = pixelSize * iSizeX * iSizeY;
+    mImageData = (char*)malloc( imageSize );
+
+    char* srcIter = ((char*)iData);
+    char* dstIter = mImageData;
+    unsigned int localPitch = iSizeX * pixelSize;
+    for( unsigned int ii = 0; ii < iSizeY; ++ii )
+    {
+        memcpy( dstIter, srcIter, localPitch );
+        srcIter += iPitch;
+        dstIter += (localPitch);
+    }
+
+    if( iType == Dissector::PIXEL_A8R8G8B8 )
+    {
+        QImage image( (uchar*)mImageData, mImageSizeX, mImageSizeY, localPitch,
+                      QImage::Format_ARGB32 );
+        SetImage( image );
+    }
+    else if( iType == Dissector::PIXEL_R32F )
+    {
+        PrepareFloatImage();
+    }
+}
+
+void TextureViewerFast::SetImage( const QImage& iImage )
+{
+    mImage = iImage.copy();
+    mPixMapItem.setPixmap(QPixmap::fromImage( iImage ) );
+
     QImage imageOpaque = mImage;
     for( int xx = 0, count =  imageOpaque.width(); xx < count; ++xx )
     {
@@ -175,12 +259,18 @@ void TextureViewerFast::closeEvent ( QCloseEvent * e )
 
 QPoint TextureViewerFast::GetTexturePos( QPoint iPoint )
 {
-    float x = mGraphicsView->horizontalScrollBar()->value() + iPoint.x();
-    float y = mGraphicsView->verticalScrollBar()->value() + iPoint.y();
+    QPointF imagePos = this->mGraphicsView->mapToScene( iPoint );
+    int x = imagePos.x();
+    int y = imagePos.y();
 
-    x = floorf( x / mScale );
-    y = floorf( y / mScale );
+    x = std::max<int>( 0, x );
+    x = std::min<int>( mImageSizeX-1, x );
+
+    y = std::max<int>( 0, y );
+    y = std::min<int>( mImageSizeY-1, y );
+
     QPoint rvalue( x, y );
+
 
     return rvalue;
 }
@@ -260,10 +350,27 @@ void TextureViewerFast::slotContextAction(QAction* iAction)
 void TextureViewerFast::UpdateLocalPos( QPoint localPos )
 {
     QPoint pos = GetTexturePos( localPos );
-    QRgb col = mImage.pixel( pos.x(), pos.y() );
+    size_t pixelSize = Dissector::GetPixelSize( mPixelType );
+    char* pixelPtr = mImageData + (pixelSize * ( pos.x() + (pos.y() * mImageSizeX) ) );
 
-    mStatusBar->setText( QString("(%1, %2) -> (%3, %4, %5, %6)").arg( pos.x() ).arg( pos.y() ).
-                         arg( qRed(col) ).arg( qGreen(col) ).arg( qBlue(col) ).arg( qAlpha(col) ) );
+    switch( mPixelType )
+    {
+    case( Dissector::PIXEL_A8R8G8B8 ):
+    {
+        unsigned int col = *(unsigned int*)pixelPtr;
+        unsigned int a = (col >> 24);
+        unsigned int r = (col >> 16) & 0xFF;
+        unsigned int g = (col >> 8)  & 0xFF;
+        unsigned int b = (col     )  & 0xFF;
+        mStatusBar->setText( QString("(%1, %2) -> (%3, %4, %5, %6)").arg( pos.x() ).arg( pos.y() ).
+                             arg( r ).arg( g ).arg( b ).arg( a ) );
+    }break;
+    case( Dissector::PIXEL_R32F ):
+        float val = *(float*)pixelPtr;
+        mStatusBar->setText( QString("(%1, %2) -> (%3)").arg( pos.x() ).arg( pos.y() ).
+                             arg( val ) );
+        break;
+    }
 }
 
 void TextureViewerFast::ReadSettings()

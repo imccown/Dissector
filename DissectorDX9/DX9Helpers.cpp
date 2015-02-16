@@ -976,9 +976,8 @@ namespace DissectorDX9
         D3DFORMAT fmt;
         switch( desc.Format )
         {
-        // Implement the lockable type someday.
-        //case( D3DFMT_D16 ): fmt = D3DFMT_D16_LOCKABLE; break;
-        //case( D3DFMT_D32 ): fmt = D3DFMT_D32_LOCKABLE; break;
+        case( D3DFMT_D16 ):
+        case( D3DFMT_D32 ):
         case( D3DFMT_D24X8 ):
         case( D3DFMT_D24S8 ): fmt = (D3DFORMAT)MAKEFOURCC( 'I', 'N', 'T', 'Z' ); break;
         default: return iSurface; // Can't replace certain types of depth buffer formats.
@@ -1004,7 +1003,7 @@ namespace DissectorDX9
     }
 
     void RenderTextureToRT( IDirect3DDevice9* iD3DDevice, IDirect3DBaseTexture9* iTexture, IDirect3DSurface9* iRenderTarget,
-        IDirect3DPixelShader9* overrideShader, bool iInFrame )
+        IDirect3DPixelShader9* overrideShader, bool iInFrame, float* iExtraConstants, int iNumConstants )
     {
         if( !iInFrame )
             iD3DDevice->BeginScene();
@@ -1028,6 +1027,10 @@ namespace DissectorDX9
         uvOffset[2] = uvOffset[3] = 0.f;
 
         iD3DDevice->SetPixelShaderConstantF( 0, uvOffset, 1 );
+        if( iExtraConstants && iNumConstants )
+        {
+            iD3DDevice->SetPixelShaderConstantF( 1, iExtraConstants, iNumConstants );
+        }
 
         DrawFullScreenQuad( iD3DDevice );
 

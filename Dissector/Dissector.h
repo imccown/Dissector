@@ -24,6 +24,12 @@ namespace Dissector
         ST_HULL,
     };
 
+    enum PixelTypes
+    {
+        PIXEL_A8R8G8B8 = 0,
+        PIXEL_R32F,
+    };
+
     enum CommandTypes
     {
         CMD_NONE = 0,
@@ -286,14 +292,11 @@ namespace Dissector
     
     // Call this from GetTextureImageCallback to supply the image.
     void ImageRetrievalCallback( void* iTexture, unsigned int iVisualizerType, void* iImage, unsigned int iSizeX,
-                                 unsigned int iSizeY, unsigned int iPitch );
+                                 unsigned int iSizeY, unsigned int iPitch, PixelTypes iType );
 
     // Call this from GetCurrentRTCallback to supply the image.
     void CurrentRTRetrievalCallback( void* iImage, unsigned int iSizeX, unsigned int iSizeY, unsigned int iPitch );
 
-    // Call this from GetTextureImageCallback to supply the image.
-    void ImageRetrievalCallback( void* iTexture, unsigned int iVisualizerType, void* iImage, unsigned int iSizeX,
-                                 unsigned int iSizeY, unsigned int iPitch );
     
     // Call this from GetTextureThumbnailCallback to supply the image.
     void ThumbnailRetrievalCallback( void* iTexture, unsigned int iVisualizerType, void* iImage, unsigned int iSizeX,
@@ -346,6 +349,20 @@ namespace Dissector
     // For other libs to use easily
     void* MallocCallback( size_t size );
     void FreeCallback( void* ptr );
+
+    // Utilities
+    inline size_t GetPixelSize( PixelTypes iType )
+    {
+        switch( iType )
+        {
+        case( PIXEL_A8R8G8B8 ):
+        case( PIXEL_R32F ):
+            return 4;
+
+        default:
+            return 1;
+        }
+    }
 };
 
 #define SAFE_DEALLOC( iObject ) if( iObject ){ Dissector::FreeCallback( iObject ); iObject = 0; }

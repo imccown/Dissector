@@ -8,6 +8,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
 #include <QAction>
+#include <Dissector.h>
 
 class MainWindow;
 
@@ -30,11 +31,14 @@ public:
     unsigned int GetTextureType(){ return mTextureType; }
     void SetTextureType( unsigned int iType ){ mTextureType = iType; }
     void SetMainWindow( MainWindow* iMainWindow ){ mMainWindow = iMainWindow; }
-    void SetPixmap( const QPixmap& iPixmap );
+    //void SetPixmap( const QPixmap& iPixmap );
+    void SetImage( const QImage& iImage );
     void SetDebuggable( bool iDebuggable ){ mDebuggable = iDebuggable; }
     bool processWheel(QWheelEvent *);
 
     void ScrollDelta( const QPoint& iDelta );
+
+    void SetImageData( Dissector::PixelTypes iType, unsigned int iSizeX, unsigned int iSizeY, unsigned int iPitch, void* iData );
 
     void ReadSettings();
     void WriteSettings();
@@ -51,6 +55,7 @@ private:
     QPoint TextureViewerFast::GetTexturePos( QPoint iPoint );
     void UpdateLocalPos( QPoint localPos );
     void SetGraphicsItem();
+    void PrepareFloatImage();
 
 private: // Data
     Ui::TextureViewerFast *ui;
@@ -71,6 +76,11 @@ private: // Data
 
     bool         mShowingAlpha;
     QAction      mToggleAlpha;
+
+    unsigned int            mImageSizeX;
+    unsigned int            mImageSizeY;
+    Dissector::PixelTypes   mPixelType;
+    char*                   mImageData;
 
     friend class WheelEventFilter;
 };

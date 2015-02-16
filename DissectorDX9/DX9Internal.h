@@ -97,6 +97,8 @@ struct DX9Data
     IUnknown**                  mAssetHandles;
     unsigned int                mAssetHandlesCount;
     unsigned int                mAssetHandlesSize;
+
+    const Dissector::DrawCallData* mLastEvent;
 };
 
 struct RegisterData

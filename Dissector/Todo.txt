@@ -1,9 +1,7 @@
 Tasks:
 
 --- Shortlist ---
-Crashes in BGFX
-x64 support
-Better depth/stencil viewing support
+Add wireframe viewing support.
 Choose which render target to view, and/or show all render targets.
 
 -- Try to get in --

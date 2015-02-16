@@ -1191,7 +1191,8 @@ void MainWindow::PopulateEventList()
         }
         else if( eventType == -2 )
         {
-            groupList.pop();
+            if( groupList.size() > 1 ) // Don't pop your top or we have nowhere to put stuff.
+                groupList.pop();
         }
         else
         {
@@ -1395,7 +1396,7 @@ void MainWindow::RequestTexture( int iEventNum, unsigned __int64 iEventData, uns
     for( auto listIter = mTextureRequests.begin();
          listIter != mTextureRequests.end(); ++listIter )
     {
-        if( listIter->mId == id )
+        if( listIter->mId == id && listIter->mEventNum == iEventNum )
         {
             idRequestPending = true;
             return;
@@ -1476,18 +1477,15 @@ void MainWindow::AcceptImage()
     unsigned int sizeX = GetBufferData<unsigned int>( dataIter );
     unsigned int sizeY = GetBufferData<unsigned int>( dataIter );
     unsigned int pitch = GetBufferData<unsigned int>( dataIter );
+    unsigned int pixelType = GetBufferData<unsigned int>( dataIter );
 
     endIter;
 
-    QImage image( (uchar*)dataIter, sizeX, sizeY, pitch,
-                  QImage::Format_ARGB32 );
-
-    QPixmap pixmap = QPixmap::fromImage( image );
     for( auto iter = mTextureWindows.begin(); iter != mTextureWindows.end(); ++iter )
     {
         if( (*iter)->GetTextureType() == rstype )
         {
-            (*iter)->SetPixmap( pixmap );
+            (*iter)->SetImageData( Dissector::PixelTypes(pixelType), sizeX, sizeY, pitch, dataIter );
         }
     }
 
@@ -1634,15 +1632,13 @@ void MainWindow::HandleCurrentRTUpdate()
     unsigned int sizeX = GetBufferData<unsigned int>( dataIter );
     unsigned int sizeY = GetBufferData<unsigned int>( dataIter );
     unsigned int pitch = GetBufferData<unsigned int>( dataIter );
+    unsigned int pixelType = GetBufferData<unsigned int>( dataIter );
 
-    QImage image( (uchar*)dataIter, sizeX, sizeY, pitch,
-                  QImage::Format_ARGB32 );
-    QPixmap pixmap = QPixmap::fromImage( image );
     for( auto iter = mTextureWindows.begin(); iter != mTextureWindows.end(); ++iter )
     {
         if( (*iter)->GetTextureType() == TextureViewerFast::CURRENT_RT )
         {
-            (*iter)->SetPixmap( pixmap );
+            (*iter)->SetImageData( Dissector::PixelTypes(pixelType), sizeX, sizeY, pitch, dataIter );
         }
     }
 }
