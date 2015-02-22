@@ -71,6 +71,8 @@ private slots:
        void slotLaunchClicked();
        void slotConnectClicked();
        void slotCaptureClicked();
+       void slotWireframeOffClicked();
+
        void slotConnectionStateChanged( QAbstractSocket::SocketState iState );
        void slotBytesWritten( qint64 iBytesWritten );
        void slotDataReady();
@@ -89,6 +91,7 @@ private slots:
 
        void slotDrawContextAction(QAction* iAction);
        void slotRenderStateContextAction(QAction* iAction);
+
 
 private:
        void SendCommand( int iType, const char* iData, int iDataSize );
@@ -129,6 +132,9 @@ private:
        void closeEvent(QCloseEvent *event);
        void SetCaptureActive( bool iEnabled );
 
+       void GotoDrawCall( int drawCallId );
+
+       void RefreshGUIOptions();
 private:
     friend class EnterEventFilter;
     friend class TextureViewerFast;
@@ -163,6 +169,8 @@ private:
 
     QAction*            mConnectAction;
     QAction*            mCaptureAction;
+    QAction*            mWireFrameAction;
+
     bool                mCaptureActive;
 
     bool                mIgnoreRSEdits;
@@ -179,6 +187,8 @@ private:
     QList< MeshViewer* >        mMeshWindows;
 
     ShaderDebugWindow*          mCompareWindow;
+
+    bool                        mShowWireframe;
 };
 
 class EnterEventFilter : public QObject

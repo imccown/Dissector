@@ -46,6 +46,7 @@
    <addaction name="actionLaunch"/>
    <addaction name="actionConnect"/>
    <addaction name="actionCapture"/>
+   <addaction name="actionWireframe_Off"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionConnect">
@@ -73,6 +74,11 @@
    </property>
    <property name="toolTip">
     <string>Launch an Executable</string>
+   </property>
+  </action>
+  <action name="actionWireframe_Off">
+   <property name="text">
+    <string>Wireframe Off</string>
    </property>
   </action>
  </widget>

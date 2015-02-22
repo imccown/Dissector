@@ -13,6 +13,16 @@ namespace Dissector
         PACKET_BEGIN = 0x85BA573D,
     };
 
+    struct GUIOptions
+    {
+        bool mShowWireFrame;
+
+        void Reset()
+        {
+            mShowWireFrame = false;
+        }
+    };
+
     enum ShaderTypes
     {
         ST_NONE = 0,
@@ -54,6 +64,7 @@ namespace Dissector
         CMD_GETRENDERTARGET,
         CMD_GETMESH,
         CMD_CANCELOUTSTANDINGTHUMBNAILS,
+        CMD_SETGUIOPTIONS,
     };
 
     enum ResponseTypes
@@ -269,6 +280,8 @@ namespace Dissector
     void StartSlave( void* iDevice ); // Blocks
 
     bool IsCapturing();
+
+    GUIOptions& GetOptions();
 
     // Draw call registering functions
     void StartDrawCallGroup( const char* iName );

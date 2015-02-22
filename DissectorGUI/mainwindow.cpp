@@ -113,6 +113,8 @@ MainWindow::MainWindow(QWidget *parent) :
              this, SLOT(slotCaptureClicked()) );
     connect( ui->actionLaunch, SIGNAL(triggered()),
              this, SLOT(slotLaunchClicked()) );
+    connect( ui->actionWireframe_Off, SIGNAL(triggered()),
+             this, SLOT(slotWireframeOffClicked()) );
 
     mDrawview->setModel( mDrawModel );
     auto selModel = mDrawview->selectionModel();
@@ -146,11 +148,14 @@ MainWindow::MainWindow(QWidget *parent) :
 
     mConnectAction = findChild<QAction*>( "actionConnect" );
     mCaptureAction = findChild<QAction*>( "actionCapture" );
+    mWireFrameAction = ui->actionWireframe_Off;
     mCaptureActive = false;
 
     mCurrentEventNum = 0;
     mIgnoreRSEdits = false;
     mCompareWindow = NULL;
+
+    mShowWireframe = false;
 }
 
 MainWindow::~MainWindow()
@@ -301,14 +306,17 @@ void MainWindow::slotConnectClicked()
 
 void MainWindow::slotCaptureClicked()
 {
-    if( mCaptureActive )
+    if( mConnectionEstablished )
     {
-        SendCommand( Dissector::CMD_RESUME, NULL, 0 );
-        SetCaptureActive( false );
-    }
-    else
-    {
-        SendCommand( Dissector::CMD_TRIGGERCAPTURE, NULL, 0 );
+        if( mCaptureActive )
+        {
+            SendCommand( Dissector::CMD_RESUME, NULL, 0 );
+            SetCaptureActive( false );
+        }
+        else
+        {
+            SendCommand( Dissector::CMD_TRIGGERCAPTURE, NULL, 0 );
+        }
     }
 }
 
@@ -319,6 +327,32 @@ void MainWindow::slotDrawViewSelectionChanged(const QModelIndex & current,
     auto data = current.data( Qt::UserRole + 1 );
     int drawCallId = data.toInt();
 
+    GotoDrawCall( drawCallId );
+}
+
+void MainWindow::RefreshGUIOptions()
+{
+    if( mConnectionEstablished )
+    {
+        Dissector::GUIOptions opts;
+        opts.mShowWireFrame = mShowWireframe;
+        SendCommand( Dissector::CMD_SETGUIOPTIONS, (const char*)&opts, sizeof(Dissector::GUIOptions) );
+    }
+}
+
+void MainWindow::slotWireframeOffClicked()
+{
+    mShowWireframe = !mShowWireframe;
+    if( mShowWireframe )
+        mWireFrameAction->setText( "Wireframe On" );
+    else
+        mWireFrameAction->setText( "Wireframe Off" );
+
+    RefreshGUIOptions();
+}
+
+void MainWindow::GotoDrawCall( int drawCallId )
+{
     mCurrentEventNum = drawCallId;
 
     SendCommand( Dissector::CMD_GOTOCALL, (const char*)&drawCallId, sizeof(int) );
@@ -435,6 +469,8 @@ void MainWindow::slotConnectionStateChanged(QAbstractSocket::SocketState iState)
             mConnectAction->setText( "Connected" );
             mConnectionEstablished = true;
             SendMessage( greetMessage );
+            RefreshGUIOptions();
+
             SendCommand( Dissector::CMD_GETEVENTLIST, NULL, 0 );
             SendCommand( Dissector::CMD_GETSTATETYPES, NULL, 0 );
             SendCommand( Dissector::CMD_GETENUMTYPES, NULL, 0 );
@@ -1150,6 +1186,9 @@ void MainWindow::PopulateEventList()
     char* dataIter = (char*)mCurrentMessage;
     char* endIter = dataIter + mCurrentMessageSize;
     dataIter += sizeof(int); // Skip event id
+    int drawCallSelection = GetBufferData<int>( dataIter );
+    QModelIndex selIndex;
+    bool selIndexValid = false;
 
     mDrawModel->clear();
     QStringList columnNames;
@@ -1201,9 +1240,25 @@ void MainWindow::PopulateEventList()
             rowItems.back()->setFlags(rowItems.back()->flags() & ~Qt::ItemIsEditable);
             rowItems.first()->setData( eventCounter );
             groupList.top()->appendRow( rowItems );
+            if( eventCounter == drawCallSelection )
+            {
+                selIndex = rowItems.first()->index();
+                selIndexValid = true;
+
+                mDrawview->selectionModel()->select( selIndex, QItemSelectionModel::Rows );
+            }
         }
 
         ++eventCounter;
+    }
+
+    mDrawview->expandAll();
+    if( selIndexValid )
+    {
+        mDrawview->selectionModel()->clear();
+        mDrawview->setCurrentIndex( selIndex );
+        mDrawview->scrollTo(selIndex);
+        GotoDrawCall( drawCallSelection );
     }
 }
 

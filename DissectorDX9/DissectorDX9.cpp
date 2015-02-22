@@ -2178,19 +2178,22 @@ DebugShaderCleanup:
         }
 
         virtual bool ResimulateEnd(void* iDevice)
-        { 
-            if( sDX9Data.mLastEvent )
+        {
+            bool wireframe = Dissector::GetOptions().mShowWireFrame;
+            if( sDX9Data.mLastEvent && wireframe )
             {
                 if( sDX9Data.mLastEvent->mEventType == ET_DRAWINDEXED ||
                     sDX9Data.mLastEvent->mEventType == ET_DRAW ||
                     sDX9Data.mLastEvent->mEventType == ET_DRAWINDEXEDUP ||
                     sDX9Data.mLastEvent->mEventType == ET_DRAWUP )
                 {
-                    // TODO: Make this use a special shader to show wireframe stuff.
-                    //IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
-                    //ResetDevice( D3DDevice );
-                    //D3DDevice->SetRenderState( D3DRS_FILLMODE, D3DFILL_SOLID );
-                    //ExecuteEvent( D3DDevice, *sDX9Data.mLastEvent );
+                    IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
+                    ResetDevice( D3DDevice );
+                    D3DDevice->SetPixelShader( sDX9Data.mSingleColorShader );
+                    float color[4] = { 1.f, 0.f, 1.f, 1.f };
+                    D3DDevice->SetPixelShaderConstantF( 0, color, 1 );
+                    D3DDevice->SetRenderState( D3DRS_FILLMODE, D3DFILL_WIREFRAME );
+                    ExecuteEvent( D3DDevice, *sDX9Data.mLastEvent );
                 }
             }
 

@@ -32,6 +32,8 @@ struct DissectorData
         mNetworkFrameUpdate = NULL;
         mSlaveEnded = NULL;
         mCallbacks = NULL;
+
+        mGUIOptions.Reset();
     }
 
     char*                        mStateTypeBuffer;
@@ -58,6 +60,7 @@ struct DissectorData
 
     char*                        mEnumData;
 
+    Dissector::GUIOptions        mGUIOptions;
 
     struct CommandData
     {
@@ -386,6 +389,10 @@ namespace Dissector
         char* dataIterEnd = outData + bufferLen;
         char tempData[512];
 
+        int dclimit = sDissectorData.mCaptureSize < (sDissectorData.mDrawCallLimit) ? sDissectorData.mCaptureSize : (sDissectorData.mDrawCallLimit);
+
+        StoreBufferData( dclimit, dataIter ); // Currently selected draw call. Saves between sessions.
+
         DrawCallData* iterEnd = &sDissectorData.mCaptureData[ sDissectorData.mCaptureSize ];
         for( DrawCallData* iter = sDissectorData.mCaptureData; iter != iterEnd; ++iter )
         {
@@ -688,6 +695,11 @@ namespace Dissector
         sDissectorData.mCallbacks->GetMesh( iDevice, iEventId, iTypeId );
     }
 
+    void SetGUIOptions(void* iDevice, void* iMessageData, unsigned int iDataSize)
+    {
+        sDissectorData.mGUIOptions = *(GUIOptions*)iMessageData;
+    }
+
     void CheckCommands( void* iDevice )
     {
         while( !sDissectorData.mCommands.empty() )
@@ -721,6 +733,7 @@ namespace Dissector
                 case( CMD_OVERRIDERENDERSTATE ): OverrideRenderState( iDevice, (char*)cd.mData, cd.mDataSize ); break;
                 case( CMD_CLEARRENDERSTATEOVERRIDE ): ClearRenderStateOverrides( iDevice, (char*)cd.mData, cd.mDataSize ); break;
                 case( CMD_GETMESH ): RetrieveMesh( iDevice, (char*)cd.mData, cd.mDataSize ); break;
+                case( CMD_SETGUIOPTIONS ): SetGUIOptions( iDevice, (char*)cd.mData, cd.mDataSize ); break;
                 }
 
                 if( sDissectorData.mNetworkFrameUpdate )
@@ -786,6 +799,11 @@ namespace Dissector
     inline bool IsCapturing()
     {
         return sDissectorData.mMiscDataIter != NULL;
+    }
+
+    GUIOptions& GetOptions()
+    {
+        return sDissectorData.mGUIOptions;
     }
 
     inline bool PrepareMiscDataBufferForAdd( size_t iSize )

@@ -387,7 +387,7 @@ void MeshViewer::setMesh( int iType, unsigned int iNumPrims, float* iMesh,
     if( extents[maxIndex] < extents[midIndex] )
         std::swap( maxIndex, midIndex );
 
-    mBaseDistance[2] = 2.f * extents[maxIndex];
+    mBaseDistance[2] = 3.f * extents[maxIndex];
     mBaseDistance[1] = 0.f;
     mBaseDistance[0] = 0.f;
 
@@ -556,7 +556,11 @@ void MeshViewer::ReadSettings()
 {
     mIgnoreVisChanges = true;
     QSettings settings;
-    setGeometry( settings.value("meshviewer/geometry").toRect() );
+    QRect rect = settings.value("meshviewer/geometry").toRect();
+    if( rect.top() == 0 && rect.left() == 0 && rect.width() == 0 && rect.height() == 0 )
+        rect = QRect( 50, 50, 800, 600 );
+
+    setGeometry( rect );
     Visibility vis = Visibility( settings.value("meshviewer/visiblity", QWindow::Windowed ).toUInt());
     setVisibility( vis );
     mIgnoreVisChanges = false;
