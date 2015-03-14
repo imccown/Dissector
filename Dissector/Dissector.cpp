@@ -790,6 +790,8 @@ namespace Dissector
             }
         }
 
+        ResimulateFrame( iDevice, false ); // Simualte all calls one last time to make sure any buffers that are changed are in the correct state.
+
         sDissectorData.mCallbacks->SlaveEnd( iDevice );
 
         if( sDissectorData.mSlaveEnded )

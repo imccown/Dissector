@@ -92,6 +92,30 @@ namespace DissectorDX9
                 ClearData* dc = (ClearData*)iData.mDrawCallData;
                 iD3DDevice->Clear( 0, 0, dc->mFlags, dc->mColor, dc->mZ, dc->mStencil );
             }break;
+        case(ET_VERTEXLOCK):
+            {
+                BufferLockData* ld = (BufferLockData*)iData.mDrawCallData;
+                IDirect3DVertexBuffer9* buf = (IDirect3DVertexBuffer9*)ld->mBuffer;
+                void* src = ld+1;
+                void* dst;
+                if( S_OK == buf->Lock( ld->mOffsetToLock, ld->mSizeToLock, &dst, ld->mFlags ) )
+                {
+                    memcpy( dst, src, ld->mDataSize );
+                    buf->Unlock();
+                }
+            }break;
+        case(ET_INDEXLOCK):
+            {
+                BufferLockData* ld = (BufferLockData*)iData.mDrawCallData;
+                IDirect3DIndexBuffer9* buf = (IDirect3DIndexBuffer9*)ld->mBuffer;
+                void* src = ld+1;
+                void* dst;
+                if( S_OK == buf->Lock( ld->mOffsetToLock, ld->mSizeToLock, &dst, ld->mFlags ) )
+                {
+                    memcpy( dst, src, ld->mDataSize );
+                    buf->Unlock();
+                }
+            }break;
         case(ET_ENDFRAME):
             {
             }break;

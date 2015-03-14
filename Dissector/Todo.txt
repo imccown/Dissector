@@ -1,8 +1,10 @@
 Tasks:
 
 --- Shortlist ---
-Choose which render target to view, and/or show all render targets.
-Save locked vertex/index buffer data.
+Better failure messages for shader debugging
+Cube texture support
+Choose which render target to view, and/or show all render targets
+Add a find dialog (search for text in draw call descs or render states)
 
 -- Try to get in --
 Show changed render states between two calls

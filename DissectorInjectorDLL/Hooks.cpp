@@ -10,6 +10,7 @@ static WNDPROC gSavedWinProc = NULL;
 static bool gKeepRunning = true;
 static IDirect3D9* sD3D = NULL;
 
+interface IDirect3DDevice9Hooked;
 
 #define LOGGING
 
@@ -18,7 +19,7 @@ bool gLogOneFrame = false;
 static DWORD last0samp = 0;
 
 #ifdef LOGGING
-//#define FORCE_LOG_OUTPUT
+#define FORCE_LOG_OUTPUT
 static FILE* fOutput = NULL;
     void Log( char* iFormat, ... )
     {
@@ -152,7 +153,7 @@ void PresentInternal( IDirect3DDevice9* iDevice, HRESULT res )
         Dissector::SetSlaveEndingCallback( SlaveEnded );
         Dissector::StartSlave( iDevice );
     }
-    else if( res == S_OK && Dissector::ToolWantsToCapture() )
+    else if( SUCCEEDED( res ) && Dissector::ToolWantsToCapture() )
     {
         Dissector::TriggerCapture();
         Dissector::BeginFrame( iDevice );
@@ -163,9 +164,901 @@ void PresentInternal( IDirect3DDevice9* iDevice, HRESULT res )
 }
 
 // -----------------------------------------------------------------------------
+// Hooking vertex/index buffers to get data from mid-frame locks
+// -----------------------------------------------------------------------------
+interface IDirect3DVertexBuffer9Hooked : public IDirect3DVertexBuffer9
+{
+    IDirect3DVertexBuffer9* mBuffer;
+    IDirect3DDevice9Hooked* mDeviceHooked;
+    IDirect3DDevice9* mDevice;
+    void* mLockData;
+    UINT  mOffset;
+    UINT  mSizeToLockParam;
+    UINT  mBufferSize;
+    DWORD mFlags;
+
+    IDirect3DVertexBuffer9Hooked( IDirect3DVertexBuffer9* iBuffer, IDirect3DDevice9Hooked* iDeviceHooked, IDirect3DDevice9* iDevice )
+    {
+        mBuffer = iBuffer;
+        mDevice = iDevice;
+        mDeviceHooked = iDeviceHooked;
+        mLockData = NULL;
+        mOffset = 0;
+        mSizeToLockParam = 0;
+        mBufferSize = 0;
+        mFlags = 0;
+    }
+
+    STDMETHOD(Lock)(THIS_ UINT OffsetToLock,UINT SizeToLock,void** ppbData,DWORD Flags)
+    {
+        HRESULT res = mBuffer->Lock( OffsetToLock, SizeToLock, ppbData, Flags );
+        if( SUCCEEDED( res ) && Dissector::IsCapturing() )
+        {
+            mLockData = *ppbData;
+            mOffset = OffsetToLock;
+            mSizeToLockParam = SizeToLock;
+            mFlags = Flags;
+
+            if( OffsetToLock == 0 && SizeToLock == 0 )
+            {
+                D3DVERTEXBUFFER_DESC desc;
+                mBuffer->GetDesc( &desc );
+                mBufferSize = desc.Size;
+            }
+            else
+            {
+                mBufferSize = SizeToLock;
+            }
+        }
+
+        return res;
+    }
+
+    STDMETHOD(Unlock)(THIS)
+    {
+        if( Dissector::IsCapturing() && (mFlags & D3DLOCK_READONLY) == 0 )
+        {
+            DissectorDX9::VertexUnlock( mDevice, mBuffer, mBufferSize, mOffset, mSizeToLockParam, mLockData, mFlags );
+        }
+        return mBuffer->Unlock();
+    }
+
+    STDMETHOD_(ULONG,Release)(THIS)
+    {
+        ULONG res = mBuffer->Release();
+        if( res == 0 )
+            delete this;
+
+        return res;
+    }
+
+    STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice)
+    {
+        HRESULT res = mBuffer->GetDevice( ppDevice );
+        if( S_OK == res )
+        {
+            if( *ppDevice == mDevice )
+                *ppDevice = (IDirect3DDevice9*)mDeviceHooked;
+        }
+
+        return res;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Boiler-plate pass through
+    //------------------------------------------------------------------------------------------------------------------
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
+    {
+        return mBuffer->QueryInterface( riid, ppvObj );
+    }
+
+    STDMETHOD_(ULONG,AddRef)(THIS)
+    {
+        return mBuffer->AddRef();
+    }
+
+    /*** IDirect3DResource9 methods ***/
+    STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid,CONST void* pData,DWORD SizeOfData,DWORD Flags)
+    {
+        return mBuffer->SetPrivateData( refguid, pData, SizeOfData, Flags );
+    }
+
+    STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData)
+    {
+        return mBuffer->GetPrivateData( refguid, pData, pSizeOfData );
+    }
+
+    STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid)
+    {
+        return mBuffer->FreePrivateData( refguid );
+    }
+
+    STDMETHOD_(DWORD, SetPriority)(THIS_ DWORD PriorityNew)
+    {
+        return mBuffer->SetPriority( PriorityNew );
+    }
+
+    STDMETHOD_(DWORD, GetPriority)(THIS)
+    {
+        return mBuffer->GetPriority();
+    }
+
+    STDMETHOD_(void, PreLoad)(THIS)
+    {
+        return mBuffer->PreLoad();
+    }
+
+    STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS)
+    {
+        return mBuffer->GetType();
+    }
+
+    STDMETHOD(GetDesc)(THIS_ D3DVERTEXBUFFER_DESC *pDesc)
+    {
+        return mBuffer->GetDesc( pDesc );
+    }
+};
+
+interface IDirect3DIndexBuffer9Hooked : public IDirect3DIndexBuffer9
+{
+    IDirect3DIndexBuffer9* mBuffer;
+    IDirect3DDevice9Hooked* mDeviceHooked;
+    IDirect3DDevice9* mDevice;
+    void* mLockData;
+    UINT  mOffset;
+    UINT  mSizeToLockParam;
+    UINT  mBufferSize;
+    DWORD mFlags;
+
+    IDirect3DIndexBuffer9Hooked( IDirect3DIndexBuffer9* iBuffer, IDirect3DDevice9Hooked* iDeviceHooked, IDirect3DDevice9* iDevice )
+    {
+        mBuffer = iBuffer;
+        mDevice = iDevice;
+        mDeviceHooked = iDeviceHooked;
+        mLockData = NULL;
+        mOffset = 0;
+        mSizeToLockParam = 0;
+        mBufferSize = 0;
+        mFlags = 0;
+    }
+
+
+    STDMETHOD(Lock)(THIS_ UINT OffsetToLock,UINT SizeToLock,void** ppbData,DWORD Flags)
+    {
+        HRESULT res = mBuffer->Lock( OffsetToLock, SizeToLock, ppbData, Flags );
+        if( SUCCEEDED( res ) && Dissector::IsCapturing() )
+        {
+            mLockData = *ppbData;
+            mOffset = OffsetToLock;
+            mSizeToLockParam = SizeToLock;
+            mFlags = Flags;
+
+            if( OffsetToLock == 0 && SizeToLock == 0 )
+            {
+                D3DINDEXBUFFER_DESC desc;
+                mBuffer->GetDesc( &desc );
+                mBufferSize = desc.Size;
+            }
+            else
+            {
+                mBufferSize = SizeToLock;
+            }
+        }
+
+        return res;
+    }
+
+    STDMETHOD(Unlock)(THIS)
+    {
+        if( Dissector::IsCapturing() && (mFlags & D3DLOCK_READONLY) == 0 )
+        {
+            DissectorDX9::IndexUnlock( mDevice, mBuffer, mBufferSize, mOffset, mSizeToLockParam, mLockData, mFlags );
+        }
+        return mBuffer->Unlock();
+    }
+
+    STDMETHOD_(ULONG,Release)(THIS)
+    {
+        ULONG res = mBuffer->Release();
+        if( res == 0 )
+            delete this;
+
+        return res;
+    }
+
+    STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice)
+    {
+        HRESULT res = mBuffer->GetDevice( ppDevice );
+        if( S_OK == res )
+        {
+            if( *ppDevice == mDevice )
+                *ppDevice = (IDirect3DDevice9*)mDeviceHooked;
+        }
+
+        return res;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Boiler-plate pass through
+    //------------------------------------------------------------------------------------------------------------------
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
+    {
+        return mBuffer->QueryInterface( riid, ppvObj );
+    }
+    STDMETHOD_(ULONG,AddRef)(THIS)
+    {
+        return mBuffer->AddRef();
+    }
+
+    /*** IDirect3DResource9 methods ***/
+    STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid,CONST void* pData,DWORD SizeOfData,DWORD Flags)
+    {
+        return mBuffer->SetPrivateData( refguid, pData, SizeOfData, Flags );
+    }
+    STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData)
+    {
+        return mBuffer->GetPrivateData( refguid, pData, pSizeOfData );
+    }
+    STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid)
+    {
+        return mBuffer->FreePrivateData(refguid);
+    }
+    STDMETHOD_(DWORD, SetPriority)(THIS_ DWORD PriorityNew)
+    {
+        return mBuffer->SetPriority( PriorityNew );
+    }
+    STDMETHOD_(DWORD, GetPriority)(THIS)
+    {
+        return mBuffer->GetPriority();
+    }
+    STDMETHOD_(void, PreLoad)(THIS)
+    {
+        return mBuffer->PreLoad();
+    }
+    STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS)
+    {
+        return mBuffer->GetType();
+    }
+    STDMETHOD(GetDesc)(THIS_ D3DINDEXBUFFER_DESC *pDesc)
+    {
+        return mBuffer->GetDesc( pDesc );
+    }
+};
+
+
+// -----------------------------------------------------------------------------
+// Hooking Texture Cube and Surface to get lock information
+// -----------------------------------------------------------------------------
+interface IDirect3DSurface9Hooked : public IDirect3DSurface9
+{
+    IDirect3DSurface9* mSurface;
+    IDirect3DDevice9Hooked* mDeviceHooked;
+    IDirect3DDevice9*  mDevice;
+    D3DLOCKED_RECT*    mLockedRect;
+    RECT               mRect;
+    DWORD              mFlags;
+
+    IDirect3DSurface9Hooked( IDirect3DSurface9* iSurface, IDirect3DDevice9Hooked* iDeviceHooked, IDirect3DDevice9* iDevice )
+    {
+        mSurface = iSurface;
+        mDevice = iDevice;
+        mDeviceHooked = iDeviceHooked;
+        mLockedRect = NULL;
+        mFlags = 0;
+    }
+
+    STDMETHOD_(ULONG,Release)(THIS)
+    {
+        ULONG res = mSurface->Release();
+        if( res == 0 )
+            delete this;
+
+        return res;
+    }
+
+    STDMETHOD(LockRect)(THIS_ D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags)
+    {
+        HRESULT res = mSurface->LockRect( pLockedRect, pRect, Flags );
+        if( SUCCEEDED( res ) && Dissector::IsCapturing() )
+        {
+            mLockedRect = pLockedRect;
+            mFlags = Flags;
+
+            if( pRect )
+            {
+                mRect = *pRect;
+            }
+            else 
+            {
+                D3DSURFACE_DESC desc;
+                mSurface->GetDesc( &desc );
+
+                mRect.left = 0;
+                mRect.top = 0;
+                mRect.right = desc.Width;
+                mRect.bottom = desc.Height;
+            }
+        }
+
+        return res;
+    }
+
+    STDMETHOD(UnlockRect)(THIS)
+    {
+        if( Dissector::IsCapturing() && (mFlags & D3DLOCK_READONLY) == 0 )
+        {
+            DissectorDX9::SurfaceUnlock( mDevice, mSurface, mLockedRect, mRect, mFlags );
+        }
+        return mSurface->UnlockRect();
+    }
+
+    STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice)
+    {
+        HRESULT res = mSurface->GetDevice( ppDevice );
+        if( S_OK == res )
+        {
+            if( *ppDevice == mDevice )
+                *ppDevice = (IDirect3DDevice9*)mDeviceHooked;
+        }
+
+        return res;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Boiler-plate pass through
+    //------------------------------------------------------------------------------------------------------------------
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
+    {
+        return mSurface->QueryInterface( riid, ppvObj );
+    }
+    STDMETHOD_(ULONG,AddRef)(THIS)
+    {
+        return mSurface->AddRef();
+    }
+
+    /*** IDirect3DResource9 methods ***/
+    STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid,CONST void* pData,DWORD SizeOfData,DWORD Flags)
+    {
+        return mSurface->SetPrivateData( refguid, pData, SizeOfData, Flags );
+    }
+    STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData)
+    {
+        return mSurface->GetPrivateData( refguid, pData, pSizeOfData );
+    }
+    STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid)
+    {
+        return mSurface->FreePrivateData( refguid );
+    }
+    STDMETHOD_(DWORD, SetPriority)(THIS_ DWORD PriorityNew)
+    {
+        return mSurface->SetPriority( PriorityNew );
+    }
+    STDMETHOD_(DWORD, GetPriority)(THIS)
+    {
+        return mSurface->GetPriority();
+    }
+    STDMETHOD_(void, PreLoad)(THIS)
+    {
+        return mSurface->PreLoad();
+    }
+    STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS)
+    {
+        return mSurface->GetType();
+    }
+    STDMETHOD(GetContainer)(THIS_ REFIID riid,void** ppContainer)
+    {
+        return mSurface->GetContainer( riid, ppContainer );
+    }
+    STDMETHOD(GetDesc)(THIS_ D3DSURFACE_DESC *pDesc)
+    {
+        return mSurface->GetDesc( pDesc );
+    }
+    STDMETHOD(GetDC)(THIS_ HDC *phdc)
+    {
+        return mSurface->GetDC( phdc );
+    }
+    STDMETHOD(ReleaseDC)(THIS_ HDC hdc)
+    {
+        return mSurface->ReleaseDC( hdc );
+    }
+};
+
+interface IDirect3DTexture9Hooked : public IDirect3DTexture9
+{
+    IDirect3DTexture9*        mTexture;
+    IDirect3DDevice9Hooked*   mDeviceHooked;
+    IDirect3DDevice9*         mDevice;
+    struct LockData
+    {
+        UINT                      mLevel;
+        D3DLOCKED_RECT*           mLockedRect;
+        RECT                      mRect;
+        DWORD                     mFlags;
+        LockData*                 mNext;
+    };
+
+    LockData*                 mLocks;
+
+    IDirect3DTexture9Hooked( IDirect3DTexture9* iTexture, IDirect3DDevice9Hooked* iDeviceHooked, IDirect3DDevice9* iDevice )
+    {
+        mTexture = iTexture;
+        mDeviceHooked = iDeviceHooked;
+        mDevice = iDevice;
+        mLocks = NULL;
+    }
+
+    STDMETHOD_(ULONG,Release)(THIS)
+    {
+        ULONG res = mTexture->Release();
+        if( res == 0 )
+            delete this;
+
+        return res;
+    }
+
+    STDMETHOD(GetSurfaceLevel)(THIS_ UINT Level,IDirect3DSurface9** ppSurfaceLevel)
+    {
+        HRESULT res = mTexture->GetSurfaceLevel( Level, ppSurfaceLevel );
+        if( SUCCEEDED( res ) && *ppSurfaceLevel )
+        {
+            *ppSurfaceLevel = new IDirect3DSurface9Hooked( *ppSurfaceLevel, mDeviceHooked, mDevice );
+        }
+
+        return res;
+    }
+
+    STDMETHOD(LockRect)(THIS_ UINT Level,D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags)
+    {
+        HRESULT res = mTexture->LockRect( Level, pLockedRect, pRect, Flags );
+        if( SUCCEEDED( res ) && Dissector::IsCapturing() )
+        {
+            LockData* ld = new LockData;
+            ld->mLevel = Level;
+            ld->mLockedRect = pLockedRect;
+            ld->mFlags = Flags;
+            ld->mNext = mLocks;
+
+            if( pRect )
+            {
+                ld->mRect = *pRect;
+            }
+            else
+            {
+                IDirect3DSurface9* surf;
+                if( S_OK == mTexture->GetSurfaceLevel( 0, &surf ) )
+                {
+                    D3DSURFACE_DESC desc;
+                    surf->GetDesc( &desc );
+
+                    ld->mRect.left = ld->mRect.top = 0;
+                    ld->mRect.right = desc.Width;
+                    ld->mRect.bottom = desc.Height;
+                }
+                else
+                {
+                    ld->mRect.left = ld->mRect.right = ld->mRect.top = ld->mRect.bottom = 0;
+                }
+            }
+
+            mLocks = ld;
+        }
+
+        return res;
+    }
+
+    STDMETHOD(UnlockRect)(THIS_ UINT Level)
+    {
+        if( Dissector::IsCapturing() )
+        {
+            LockData* iter = mLocks;
+            while( iter ) {
+                if( iter->mLevel == Level ) {
+                    DissectorDX9::Texture2DUnlock( mDevice, mTexture, Level, iter->mLockedRect, iter->mRect, iter->mFlags );
+                    break;
+                }
+                iter = iter->mNext;
+            }
+        }
+        return mTexture->UnlockRect( Level );
+    }
+
+    STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice)
+    {
+        HRESULT res = mTexture->GetDevice( ppDevice );
+        if( S_OK == res )
+        {
+            if( *ppDevice == mDevice )
+                *ppDevice = (IDirect3DDevice9*)mDeviceHooked;
+        }
+
+        return res;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Boiler-plate pass through
+    //------------------------------------------------------------------------------------------------------------------
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
+    {
+        return mTexture->QueryInterface( riid, ppvObj );
+    }
+    STDMETHOD_(ULONG,AddRef)(THIS)
+    {
+        return mTexture->AddRef();
+    }
+
+    /*** IDirect3DBaseTexture9 methods ***/
+    STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid,CONST void* pData,DWORD SizeOfData,DWORD Flags)
+    {
+        return mTexture->SetPrivateData( refguid, pData, SizeOfData, Flags );
+    }
+    STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData)
+    {
+        return mTexture->GetPrivateData( refguid, pData, pSizeOfData );
+    }
+    STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid)
+    {
+        return mTexture->FreePrivateData( refguid );
+    }
+    STDMETHOD_(DWORD, SetPriority)(THIS_ DWORD PriorityNew)
+    {
+        return mTexture->SetPriority( PriorityNew );
+    }
+    STDMETHOD_(DWORD, GetPriority)(THIS)
+    {
+        return mTexture->GetPriority();
+    }
+    STDMETHOD_(void, PreLoad)(THIS)
+    {
+        return mTexture->PreLoad();
+    }
+    STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS)
+    {
+        return mTexture->GetType();
+    }
+    STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew)
+    {
+        return mTexture->SetLOD( LODNew );
+    }
+    STDMETHOD_(DWORD, GetLOD)(THIS)
+    {
+        return mTexture->GetLOD();
+    }
+    STDMETHOD_(DWORD, GetLevelCount)(THIS)
+    {
+        return mTexture->GetLevelCount();
+    }
+    STDMETHOD(SetAutoGenFilterType)(THIS_ D3DTEXTUREFILTERTYPE FilterType)
+    {
+        return mTexture->SetAutoGenFilterType( FilterType );
+    }
+    STDMETHOD_(D3DTEXTUREFILTERTYPE, GetAutoGenFilterType)(THIS)
+    {
+        return mTexture->GetAutoGenFilterType();
+    }
+    STDMETHOD_(void, GenerateMipSubLevels)(THIS)
+    {
+        return mTexture->GenerateMipSubLevels();
+    }
+    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC *pDesc)
+    {
+        return mTexture->GetLevelDesc( Level, pDesc );
+    }
+    STDMETHOD(AddDirtyRect)(THIS_ CONST RECT* pDirtyRect)
+    {
+        return mTexture->AddDirtyRect( pDirtyRect );
+    }
+};
+
+interface IDirect3DCubeTexture9Hooked : public IDirect3DCubeTexture9
+{
+    IDirect3DCubeTexture9*  mCube;
+    IDirect3DDevice9Hooked* mDeviceHooked;
+    IDirect3DDevice9*       mDevice;
+
+    struct LockData
+    {
+        D3DCUBEMAP_FACES    mFace;
+        UINT                mLevel;
+        D3DLOCKED_RECT*     mLockedRect;
+        RECT                mRect;
+        DWORD               mFlags;
+        LockData*           mNext;
+    };
+    LockData*               mLocks;
+
+    IDirect3DCubeTexture9Hooked( IDirect3DCubeTexture9* iCube, IDirect3DDevice9Hooked* iDeviceHooked, IDirect3DDevice9* iDevice )
+    {
+        mCube = iCube;
+        mDeviceHooked = iDeviceHooked;
+        mDevice = iDevice;
+        mLocks = NULL;
+    }
+
+    STDMETHOD_(ULONG,Release)(THIS)
+    {
+        ULONG res = mCube->Release();
+        if( res == 0 )
+            delete this;
+
+        return res;
+    }
+
+    STDMETHOD(GetCubeMapSurface)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level,IDirect3DSurface9** ppCubeMapSurface)
+    {
+        HRESULT res = mCube->GetCubeMapSurface( FaceType, Level, ppCubeMapSurface );
+        if( SUCCEEDED( res ) && *ppCubeMapSurface )
+        {
+            *ppCubeMapSurface = new IDirect3DSurface9Hooked( *ppCubeMapSurface, mDeviceHooked, mDevice );
+        }
+
+        return res;
+    }
+
+    STDMETHOD(LockRect)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level,D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags)
+    {
+        HRESULT res = mCube->LockRect( FaceType, Level, pLockedRect, pRect, Flags );
+        if( SUCCEEDED( res ) && pLockedRect )        
+        {
+            LockData* ld = new LockData;
+            ld->mFace = FaceType;
+            ld->mLevel = Level;
+            ld->mLockedRect = pLockedRect;
+            ld->mFlags = Flags;
+            ld->mNext = mLocks;
+
+            if( pRect )
+            {
+                ld->mRect = *pRect;
+            }
+            else
+            {
+                IDirect3DSurface9* surf;
+                if( S_OK == mCube->GetCubeMapSurface( FaceType, Level, &surf ) )
+                {
+                    D3DSURFACE_DESC desc;
+                    surf->GetDesc( &desc );
+
+                    ld->mRect.left = ld->mRect.top = 0;
+                    ld->mRect.right = desc.Width;
+                    ld->mRect.bottom = desc.Height;
+                }
+                else
+                {
+                    ld->mRect.left = ld->mRect.right = ld->mRect.top = ld->mRect.bottom = 0;
+                }
+            }
+
+            mLocks = ld;
+        }
+
+        return res;
+    }
+
+    STDMETHOD(UnlockRect)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level)
+    {
+        if( Dissector::IsCapturing() )
+        {
+            LockData* iter = mLocks;
+            while( iter ) {
+                if( iter->mFace == FaceType && iter->mLevel == Level ) {
+                    DissectorDX9::TextureCubeUnlock( mDevice, mCube, iter->mFace, iter->mLevel, iter->mLockedRect, iter->mRect, iter->mFlags );
+                    break;
+                }
+                iter = iter->mNext;
+            }
+        }
+
+        return mCube->UnlockRect( FaceType, Level );
+    }
+
+    STDMETHOD(GetDevice)(THIS_ IDirect3DDevice9** ppDevice)
+    {
+        HRESULT res = mCube->GetDevice( ppDevice );
+        if( S_OK == res )
+        {
+            if( *ppDevice == mDevice )
+                *ppDevice = (IDirect3DDevice9*)mDeviceHooked;
+        }
+
+        return res;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Boiler-plate pass through
+    //------------------------------------------------------------------------------------------------------------------
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
+    {
+        return mCube->QueryInterface( riid, ppvObj );
+    }
+    STDMETHOD_(ULONG,AddRef)(THIS)
+    {
+        return mCube->AddRef();
+    }
+
+    /*** IDirect3DBaseTexture9 methods ***/
+    STDMETHOD(SetPrivateData)(THIS_ REFGUID refguid,CONST void* pData,DWORD SizeOfData,DWORD Flags)
+    {
+        return mCube->SetPrivateData( refguid, pData, SizeOfData, Flags );
+    }
+    STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData)
+    {
+        return mCube->GetPrivateData( refguid, pData, pSizeOfData );
+    }
+    STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid)
+    {
+        return mCube->FreePrivateData( refguid );
+    }
+    STDMETHOD_(DWORD, SetPriority)(THIS_ DWORD PriorityNew)
+    {
+        return mCube->SetPriority( PriorityNew );
+    }
+    STDMETHOD_(DWORD, GetPriority)(THIS)
+    {
+        return mCube->GetPriority();
+    }
+    STDMETHOD_(void, PreLoad)(THIS)
+    {
+        return mCube->PreLoad();
+    }
+    STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS)
+    {
+        return mCube->GetType();
+    }
+    STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew)
+    {
+        return mCube->SetLOD( LODNew );
+    }
+    STDMETHOD_(DWORD, GetLOD)(THIS)
+    {
+        return mCube->GetLOD();
+    }
+    STDMETHOD_(DWORD, GetLevelCount)(THIS)
+    {
+        return mCube->GetLevelCount();
+    }
+    STDMETHOD(SetAutoGenFilterType)(THIS_ D3DTEXTUREFILTERTYPE FilterType)
+    {
+        return mCube->SetAutoGenFilterType( FilterType );
+    }
+    STDMETHOD_(D3DTEXTUREFILTERTYPE, GetAutoGenFilterType)(THIS)
+    {
+        return mCube->GetAutoGenFilterType();
+    }
+    STDMETHOD_(void, GenerateMipSubLevels)(THIS)
+    {
+        return mCube->GenerateMipSubLevels();
+    }
+    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC *pDesc)
+    {
+        return mCube->GetLevelDesc( Level, pDesc );
+    }
+    STDMETHOD(AddDirtyRect)(THIS_ D3DCUBEMAP_FACES FaceType,CONST RECT* pDirtyRect)
+    {
+        return mCube->AddDirtyRect( FaceType, pDirtyRect );
+    }
+};
+
+static IDirect3DTexture9Hooked      sTexhooked( NULL, NULL, NULL );
+static IDirect3DCubeTexture9Hooked  sCubehooked( NULL, NULL, NULL );
+static IDirect3DVertexBuffer9Hooked sVertexHooked( NULL, NULL, NULL );
+static IDirect3DIndexBuffer9Hooked  sIndexHooked( NULL, NULL, NULL );
+static IDirect3DSurface9Hooked      sSurfaceHooked( NULL, NULL, NULL );
+
+IDirect3DSurface9* ConvertToUnhooked( IDirect3DSurface9* iBuf )
+{
+   if( !iBuf )
+        return NULL;
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture (probably D3DX stuff), so just pass it through.
+    if( *(void**)iBuf == *(void**)&sSurfaceHooked )
+    {
+        IDirect3DSurface9Hooked* hook = (IDirect3DSurface9Hooked*)iBuf;
+        return hook ? hook->mSurface : NULL;
+    }
+
+    return iBuf;
+}
+
+IDirect3DVertexBuffer9* ConvertToUnhooked( IDirect3DVertexBuffer9* iBuf )
+{
+    if( !iBuf )
+        return NULL;
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture. This should technically never happen but having this function lets you detect that it did.
+    if( *(void**)iBuf == *(void**)&sVertexHooked )
+    {
+        IDirect3DVertexBuffer9Hooked* hook = (IDirect3DVertexBuffer9Hooked*)iBuf;
+        return hook ? hook->mBuffer : NULL;
+    }
+
+    return iBuf;
+}
+
+IDirect3DIndexBuffer9* ConvertToUnhooked( IDirect3DIndexBuffer9* iBuf )
+{
+    if( !iBuf )
+        return NULL;
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture. This should technically never happen but having this function lets you detect that it did.
+    if( *(void**)iBuf == *(void**)&sIndexHooked )
+    {
+        IDirect3DIndexBuffer9Hooked* hook = (IDirect3DIndexBuffer9Hooked*)iBuf;
+        return hook ? hook->mBuffer : NULL;
+    }
+
+    return iBuf;
+}
+
+IDirect3DTexture9* ConvertToUnhooked( IDirect3DTexture9* iTex )
+{
+    if( !iTex )
+        return NULL;
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture. This should technically never happen but having this function lets you detect that it did.
+    if( *(void**)iTex == *(void**)&sTexhooked )
+    {
+        IDirect3DTexture9Hooked* hook = (IDirect3DTexture9Hooked*)iTex;
+        return hook ? hook->mTexture : NULL;
+    }
+
+    return iTex;
+}
+
+IDirect3DCubeTexture9* ConvertToUnhooked( IDirect3DCubeTexture9* iTex )
+{
+    if( !iTex )
+        return NULL;
+
+    static IDirect3DTexture9Hooked texhooked( NULL, NULL, NULL );
+    static IDirect3DCubeTexture9Hooked cubehooked( NULL, NULL, NULL );
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture. This should technically never happen but having this function lets you detect that it did.
+    if( *(void**)iTex == *(void**)&sCubehooked )
+    {
+        IDirect3DCubeTexture9Hooked* hook = (IDirect3DCubeTexture9Hooked*)iTex;
+        return hook ? hook->mCube : NULL;
+    }
+
+    return iTex;
+}
+
+IDirect3DBaseTexture9* ConvertToUnhooked( IDirect3DBaseTexture9* iTex )
+{
+    if( !iTex )
+        return NULL;
+
+    static IDirect3DTexture9Hooked texhooked( NULL, NULL, NULL );
+    static IDirect3DCubeTexture9Hooked cubehooked( NULL, NULL, NULL );
+
+    // First 4 (or 8 for 64bit) bytes are the virtual function pointer, if those don't match the hooked type then somehow the app
+    // has gotten a hold of a non-hooked texture. This should technically never happen but having this function lets you detect that it did.
+    if( *(void**)iTex == *(void**)&sTexhooked )
+    {
+        IDirect3DTexture9Hooked* hook = (IDirect3DTexture9Hooked*)iTex;
+        return hook ? hook->mTexture : NULL;
+    }
+    else if( *(void**)iTex == *(void**)&sCubehooked )
+    {
+        IDirect3DCubeTexture9Hooked* hook = (IDirect3DCubeTexture9Hooked*)iTex;
+        return hook ? hook->mCube : NULL;
+    }
+
+    return iTex;
+}
+
+// -----------------------------------------------------------------------------
 // Hooking swap chain to get presents
 // -----------------------------------------------------------------------------
-interface IDirect3DDevice9Hooked;
 interface IDirect3DSwapChain9Hooked : public IDirect3DSwapChain9
 {
     IDirect3DDevice9*    mDevice;
@@ -208,7 +1101,9 @@ interface IDirect3DSwapChain9Hooked : public IDirect3DSwapChain9
 
     STDMETHOD(GetFrontBufferData)(THIS_ IDirect3DSurface9* pDestSurface)
     {
-        HRESULT res = mSwapChain->GetFrontBufferData( pDestSurface );
+        IDirect3DSurface9Hooked* hookdst = (IDirect3DSurface9Hooked*)pDestSurface;
+
+        HRESULT res = mSwapChain->GetFrontBufferData( hookdst ? hookdst->mSurface : NULL );
         Log( "%08x SwapChain->GetFrontBufferData: res = %x\n", this, res );
         return res;
     }
@@ -216,6 +1111,11 @@ interface IDirect3DSwapChain9Hooked : public IDirect3DSwapChain9
     STDMETHOD(GetBackBuffer)(THIS_ UINT iBackBuffer,D3DBACKBUFFER_TYPE Type,IDirect3DSurface9** ppBackBuffer)
     {
         HRESULT res = mSwapChain->GetBackBuffer( iBackBuffer, Type, ppBackBuffer );
+        if( SUCCEEDED( res ) && *ppBackBuffer )
+        {
+            *ppBackBuffer = new IDirect3DSurface9Hooked( *ppBackBuffer, mHookedDevice, mDevice );
+        }
+
         Log( "%08x SwapChain->GetBackBuffer: res = %x\n", this, res );
         return res;
     }
@@ -267,10 +1167,15 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     IDirect3DDevice9Hooked( IDirect3DDevice9* iDevice )
     {
         mDevice = iDevice;
+        for( unsigned int ii = 0; ii < 16; ++ii ) 
+        {
+            mStreamSources[ii] = NULL;
+        }
     }
 
     IDirect3DDevice9* mDevice;
-
+    IDirect3DVertexBuffer9Hooked* mStreamSources[16];
+    IDirect3DIndexBuffer9*  mIndexSource;
 
     //------------------------------------------------------------------------------------------------------------------
     // Overridden functions
@@ -320,7 +1225,7 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     STDMETHOD(Present)(THIS_ CONST RECT* pSourceRect,CONST RECT* pDestRect,HWND hDestWindowOverride,CONST RGNDATA* pDirtyRegion)
     {
         HRESULT res = mDevice->Present( pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion );
-        PresentInternal( this, res );
+        PresentInternal( mDevice, res );
 
         Log( "%08x Present: res = %x\n", this, res );
         return res;
@@ -347,9 +1252,302 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         return val;
     }
 
+    STDMETHOD(CreateVertexBuffer)(THIS_ UINT Length,DWORD Usage,DWORD FVF,D3DPOOL Pool,IDirect3DVertexBuffer9** ppVertexBuffer,HANDLE* pSharedHandle)
+    {
+        
+        HRESULT res = mDevice->CreateVertexBuffer( Length, Usage, FVF, Pool, ppVertexBuffer, pSharedHandle );
+        if( SUCCEEDED( res ) )
+        {
+            IDirect3DVertexBuffer9Hooked* hooked = new IDirect3DVertexBuffer9Hooked( *ppVertexBuffer, this, mDevice );
+            if( hooked )
+            {
+                *ppVertexBuffer = hooked;
+            }
+        }
+
+        Log( "%08x CreateVertexBuffer: res = %x\n", this, res );
+        return res;
+    }
+
+    STDMETHOD(CreateIndexBuffer)(THIS_ UINT Length,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DIndexBuffer9** ppIndexBuffer,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateIndexBuffer( Length, Usage, Format, Pool, ppIndexBuffer, pSharedHandle );
+        if( SUCCEEDED( res ) )
+        {
+            IDirect3DIndexBuffer9Hooked* hooked = new IDirect3DIndexBuffer9Hooked( *ppIndexBuffer, this, mDevice );
+            if( hooked )
+            {
+                *ppIndexBuffer = hooked;
+            }
+        }
+
+        Log( "%08x CreateIndexBuffer: res = %x\n", this, res );
+        return res;
+
+    }
+
+    STDMETHOD(SetStreamSource)(THIS_ UINT StreamNumber,IDirect3DVertexBuffer9* pStreamData,UINT OffsetInBytes,UINT Stride)
+    {
+        IDirect3DVertexBuffer9Hooked* hooked = (IDirect3DVertexBuffer9Hooked*)pStreamData;
+        mStreamSources[StreamNumber] = hooked;
+        HRESULT res = mDevice->SetStreamSource(StreamNumber,ConvertToUnhooked( pStreamData ),OffsetInBytes,Stride);
+        Log( "%08x SetStreamSource: res = %x\n", this, res );
+        return res;
+    }
+
+    STDMETHOD(GetStreamSource)(THIS_ UINT StreamNumber,IDirect3DVertexBuffer9** ppStreamData,UINT* pOffsetInBytes,UINT* pStride)
+    {
+        HRESULT res = mDevice->GetStreamSource(StreamNumber,ppStreamData,pOffsetInBytes,pStride);
+        if( SUCCEEDED( res ) )
+        {
+            if( mStreamSources[StreamNumber] && mStreamSources[StreamNumber]->mBuffer == *ppStreamData )
+            {
+                *ppStreamData = mStreamSources[StreamNumber];
+            }
+        }
+        Log( "%08x GetStreamSource: res = %x\n", this, res );
+        return res;
+    }
+
+    STDMETHOD(SetIndices)(THIS_ IDirect3DIndexBuffer9* pIndexData)
+    {
+        HRESULT res = mDevice->SetIndices( ConvertToUnhooked( pIndexData ) );
+        if( SUCCEEDED( res ) )
+            mIndexSource = pIndexData;
+
+        Log( "%08x SetIndices: res = %x\n", this, res );
+        return res;
+
+    }
+
+    STDMETHOD(GetIndices)(THIS_ IDirect3DIndexBuffer9** ppIndexData)
+    {
+        HRESULT res = mDevice->GetIndices(ppIndexData);
+        if( SUCCEEDED( res ) )
+            *ppIndexData = mIndexSource;
+
+        Log( "%08x GetIndices: res = %x\n", this, res );
+        return res;
+    }
+
+    STDMETHOD(SetCursorProperties)(THIS_ UINT XHotSpot,UINT YHotSpot,IDirect3DSurface9* pCursorBitmap)
+    {
+        IDirect3DSurface9Hooked* hook = (IDirect3DSurface9Hooked*)pCursorBitmap;
+        HRESULT res = mDevice->SetCursorProperties( XHotSpot, YHotSpot, hook ? hook->mSurface : NULL );
+        Log( "%08x SetCursorProperties: res = %x\n", this, res );
+        return res;
+
+    }
+
+    STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters,IDirect3DSwapChain9** pSwapChain)
+    {
+        HRESULT res = mDevice->CreateAdditionalSwapChain( pPresentationParameters, pSwapChain );
+        IDirect3DSwapChain9Hooked* hooked = new IDirect3DSwapChain9Hooked;
+        hooked->mDevice = mDevice;
+        hooked->mSwapChain = *pSwapChain;
+        hooked->mHookedDevice = this;
+        *pSwapChain = hooked;
+        Log( "%08x CreateAdditionalSwapChain: res = %x\n", this, res );
+        return res;
+    }
+
+
+    STDMETHOD(GetSwapChain)(THIS_ UINT iSwapChain,IDirect3DSwapChain9** pSwapChain)
+    {
+        HRESULT res = mDevice->GetSwapChain( iSwapChain, pSwapChain );
+        IDirect3DSwapChain9Hooked* hooked = new IDirect3DSwapChain9Hooked;
+        hooked->mDevice = mDevice;
+        hooked->mSwapChain = *pSwapChain;
+        hooked->mHookedDevice = this;
+        *pSwapChain = hooked;
+        Log( "%08x GetSwapChain: res = %x\n", this, res );
+        return res;
+    }    
+
+    STDMETHOD(GetBackBuffer)(THIS_ UINT iSwapChain,UINT iBackBuffer,D3DBACKBUFFER_TYPE Type,IDirect3DSurface9** ppBackBuffer)
+    {
+        HRESULT res = mDevice->GetBackBuffer( iSwapChain, iBackBuffer, Type, ppBackBuffer );
+        if( SUCCEEDED( res ) && *ppBackBuffer )
+        {
+            *ppBackBuffer = new IDirect3DSurface9Hooked( *ppBackBuffer, this, mDevice );
+        }
+        Log( "%08x GetBackBuffer: res = %x\n", this, res );
+        return res;
+
+    }
+
+    STDMETHOD(CreateTexture)(THIS_ UINT Width,UINT Height,UINT Levels,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DTexture9** ppTexture,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateTexture( Width, Height, Levels, Usage, Format, Pool, ppTexture, pSharedHandle);
+        if( SUCCEEDED( res ) && ppTexture )
+        {
+            *ppTexture = new IDirect3DTexture9Hooked( *ppTexture, this, mDevice );
+        }
+        Log( "%08x CreateTexture: ret = %x res = %x\n", this, *ppTexture, res );
+        return res;
+
+    }
+    STDMETHOD(CreateCubeTexture)(THIS_ UINT EdgeLength,UINT Levels,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DCubeTexture9** ppCubeTexture,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateCubeTexture( EdgeLength, Levels, Usage, Format, Pool, ppCubeTexture, pSharedHandle );
+        if( SUCCEEDED( res ) && *ppCubeTexture )
+        {
+            *ppCubeTexture = new IDirect3DCubeTexture9Hooked( *ppCubeTexture, this, mDevice );
+        }
+        Log( "%08x CreateCubeTexture: ret = %x res = %x\n", this, *ppCubeTexture, res );
+        return res;
+
+    }
+
+    STDMETHOD(CreateRenderTarget)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DMULTISAMPLE_TYPE MultiSample,DWORD MultisampleQuality,BOOL Lockable,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateRenderTarget( Width, Height, Format, MultiSample, MultisampleQuality, Lockable, ppSurface, pSharedHandle );
+        if( SUCCEEDED( res ) && *ppSurface )
+        {
+            *ppSurface = new IDirect3DSurface9Hooked( *ppSurface, this, mDevice );
+        }
+
+        Log( "%08x CreateRenderTarget: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(CreateDepthStencilSurface)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DMULTISAMPLE_TYPE MultiSample,DWORD MultisampleQuality,BOOL Discard,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateDepthStencilSurface( Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle );
+        if( SUCCEEDED( res ) && *ppSurface )
+        {
+            *ppSurface = new IDirect3DSurface9Hooked( *ppSurface, this, mDevice );
+        }
+        Log( "%08x CreateDepthStencilSurface: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(UpdateSurface)(THIS_ IDirect3DSurface9* pSourceSurface,CONST RECT* pSourceRect,IDirect3DSurface9* pDestinationSurface,CONST POINT* pDestPoint)
+    {
+        IDirect3DSurface9Hooked* hooksrc = (IDirect3DSurface9Hooked*)pSourceSurface;
+        IDirect3DSurface9Hooked* hookdst = (IDirect3DSurface9Hooked*)pDestinationSurface;
+
+        HRESULT res = mDevice->UpdateSurface( hooksrc ? hooksrc->mSurface : NULL, pSourceRect, hookdst ? hookdst->mSurface : NULL, pDestPoint );
+        Log( "%08x UpdateSurface: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(UpdateTexture)(THIS_ IDirect3DBaseTexture9* pSourceTexture,IDirect3DBaseTexture9* pDestinationTexture)
+    {
+        IDirect3DTexture9Hooked* hooksrc = (IDirect3DTexture9Hooked*)pSourceTexture;
+        IDirect3DTexture9Hooked* hookdst = (IDirect3DTexture9Hooked*)pDestinationTexture;
+
+        HRESULT res = mDevice->UpdateTexture( ConvertToUnhooked( pSourceTexture ), ConvertToUnhooked( pDestinationTexture ) );
+        Log( "%08x UpdateTexture: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(GetRenderTargetData)(THIS_ IDirect3DSurface9* pRenderTarget,IDirect3DSurface9* pDestSurface)
+    {
+        IDirect3DSurface9Hooked* hookrt  = (IDirect3DSurface9Hooked*)pRenderTarget;
+        IDirect3DSurface9Hooked* hookdst = (IDirect3DSurface9Hooked*)pDestSurface;
+        HRESULT res = mDevice->GetRenderTargetData( hookrt ? hookrt->mSurface : NULL, hookdst ? hookdst->mSurface : NULL );
+        Log( "%08x GetRenderTargetData: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(GetFrontBufferData)(THIS_ UINT iSwapChain,IDirect3DSurface9* pDestSurface)
+    {
+        IDirect3DSurface9Hooked* hookdst = (IDirect3DSurface9Hooked*)pDestSurface;
+        HRESULT res = mDevice->GetFrontBufferData( iSwapChain, hookdst ? hookdst->mSurface : NULL );
+        Log( "%08x GetFrontBufferData: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(StretchRect)(THIS_ IDirect3DSurface9* pSourceSurface,CONST RECT* pSourceRect,IDirect3DSurface9* pDestSurface,CONST RECT* pDestRect,D3DTEXTUREFILTERTYPE Filter)
+    {
+        IDirect3DSurface9Hooked* hooksrc = (IDirect3DSurface9Hooked*)pSourceSurface;
+        IDirect3DSurface9Hooked* hookdst = (IDirect3DSurface9Hooked*)pDestSurface;
+
+        HRESULT res = mDevice->StretchRect( hooksrc ? hooksrc->mSurface : NULL, pSourceRect, hookdst ? hookdst->mSurface : NULL, pDestRect, Filter );
+        Log( "%08x StretchRect: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(ColorFill)(THIS_ IDirect3DSurface9* pSurface,CONST RECT* pRect,D3DCOLOR color)
+    {
+        IDirect3DSurface9Hooked* hook = (IDirect3DSurface9Hooked*)pSurface;
+
+        HRESULT res = mDevice->ColorFill( hook ? hook->mSurface : NULL, pRect, color );
+        Log( "%08x ColorFill: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(CreateOffscreenPlainSurface)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DPOOL Pool,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
+    {
+        HRESULT res = mDevice->CreateOffscreenPlainSurface( Width, Height, Format, Pool, ppSurface, pSharedHandle );
+        if( SUCCEEDED( res ) && *ppSurface )
+        {
+            *ppSurface = new IDirect3DSurface9Hooked( *ppSurface, this, mDevice );
+        }
+
+        Log( "%08x CreateOffscreenPlainSurface: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(SetRenderTarget)(THIS_ DWORD RenderTargetIndex,IDirect3DSurface9* pRenderTarget)
+    {
+        IDirect3DSurface9Hooked* hook = (IDirect3DSurface9Hooked*)pRenderTarget;
+
+        HRESULT res = mDevice->SetRenderTarget( RenderTargetIndex, ConvertToUnhooked( hook ) );
+        Log( "%08x SetRenderTarget: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(GetRenderTarget)(THIS_ DWORD RenderTargetIndex,IDirect3DSurface9** ppRenderTarget)
+    {
+        HRESULT res = mDevice->GetRenderTarget( RenderTargetIndex, ppRenderTarget );
+        if( SUCCEEDED( res ) && *ppRenderTarget )
+        {
+            *ppRenderTarget = new IDirect3DSurface9Hooked( *ppRenderTarget, this, mDevice );
+        }
+        Log( "%08x GetRenderTarget: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(SetDepthStencilSurface)(THIS_ IDirect3DSurface9* pNewZStencil)
+    {
+        IDirect3DSurface9Hooked* hook = (IDirect3DSurface9Hooked*)pNewZStencil;
+        HRESULT res = mDevice->SetDepthStencilSurface( ConvertToUnhooked( hook ) );
+        Log( "%08x SetDepthStencilSurface: res = %x\n", this, res );
+        return res;
+
+    }
+    STDMETHOD(GetDepthStencilSurface)(THIS_ IDirect3DSurface9** ppZStencilSurface)
+    {
+        HRESULT res = mDevice->GetDepthStencilSurface( ppZStencilSurface );
+        if( SUCCEEDED( res ) && *ppZStencilSurface )
+        {
+            *ppZStencilSurface = new IDirect3DSurface9Hooked( *ppZStencilSurface, this, mDevice );
+        }
+
+        Log( "%08x GetDepthStencilSurface: res = %x\n", this, res );
+        return res;
+
+    }
+
+    STDMETHOD(SetTexture)(THIS_ DWORD Stage,IDirect3DBaseTexture9* pTexture)
+    {
+        HRESULT res = mDevice->SetTexture(Stage, ConvertToUnhooked( pTexture ) );
+        Log( "%08x SetTexture: tex = %x res = %x\n", this, pTexture, res );
+        return res;
+
+    }
+
+    STDMETHOD(GetTexture)(THIS_ DWORD Stage,IDirect3DBaseTexture9** ppTexture)
+    {
+        HRESULT res = mDevice->GetTexture(Stage,ppTexture);
+        Log( "%08x GetTexture: res = %x\n", this, res );
+        return res;
+    }
 
     //------------------------------------------------------------------------------------------------------------------
-    // Boiler-plate pass through nonsense
+    // Boiler-plate pass through
     //------------------------------------------------------------------------------------------------------------------
     /*** IUnknown methods ***/
     STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj)
@@ -420,13 +1618,6 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         return res;
 
     }
-    STDMETHOD(SetCursorProperties)(THIS_ UINT XHotSpot,UINT YHotSpot,IDirect3DSurface9* pCursorBitmap)
-    {
-        HRESULT res = mDevice->SetCursorProperties( XHotSpot, YHotSpot, pCursorBitmap );
-        Log( "%08x SetCursorProperties: res = %x\n", this, res );
-        return res;
-
-    }
     STDMETHOD_(void, SetCursorPosition)(THIS_ int X,int Y,DWORD Flags)
     {
         mDevice->SetCursorPosition( X, Y, Flags );
@@ -440,29 +1631,7 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         return res;
 
     }
-    STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters,IDirect3DSwapChain9** pSwapChain)
-    {
-        HRESULT res = mDevice->CreateAdditionalSwapChain( pPresentationParameters, pSwapChain );
-        IDirect3DSwapChain9Hooked* hooked = new IDirect3DSwapChain9Hooked;
-        hooked->mDevice = mDevice;
-        hooked->mSwapChain = *pSwapChain;
-        hooked->mHookedDevice = this;
-        *pSwapChain = hooked;
-        Log( "%08x CreateAdditionalSwapChain: res = %x\n", this, res );
-        return res;
 
-    }
-    STDMETHOD(GetSwapChain)(THIS_ UINT iSwapChain,IDirect3DSwapChain9** pSwapChain)
-    {
-        HRESULT res = mDevice->GetSwapChain( iSwapChain, pSwapChain );
-        IDirect3DSwapChain9Hooked* hooked = new IDirect3DSwapChain9Hooked;
-        hooked->mDevice = mDevice;
-        hooked->mSwapChain = *pSwapChain;
-        hooked->mHookedDevice = this;
-        *pSwapChain = hooked;
-        Log( "%08x GetSwapChain: res = %x\n", this, res );
-        return res;
-    }
     STDMETHOD_(UINT, GetNumberOfSwapChains)(THIS)
     {
         HRESULT res = mDevice->GetNumberOfSwapChains();
@@ -474,13 +1643,6 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     {
         HRESULT res = mDevice->Reset( pPresentationParameters );
         Log( "%08x Reset: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetBackBuffer)(THIS_ UINT iSwapChain,UINT iBackBuffer,D3DBACKBUFFER_TYPE Type,IDirect3DSurface9** ppBackBuffer)
-    {
-        HRESULT res = mDevice->GetBackBuffer( iSwapChain, iBackBuffer, Type, ppBackBuffer );
-        Log( "%08x GetBackBuffer: res = %x\n", this, res );
         return res;
 
     }
@@ -508,129 +1670,10 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         mDevice->GetGammaRamp( iSwapChain, pRamp );
         Log( "%08x GetGammaRamp: \n" );
     }
-    STDMETHOD(CreateTexture)(THIS_ UINT Width,UINT Height,UINT Levels,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DTexture9** ppTexture,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateTexture( Width, Height, Levels, Usage, Format, Pool, ppTexture, pSharedHandle);
-        Log( "%08x CreateTexture: res = %x\n", this, res );
-        return res;
-
-    }
     STDMETHOD(CreateVolumeTexture)(THIS_ UINT Width,UINT Height,UINT Depth,UINT Levels,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DVolumeTexture9** ppVolumeTexture,HANDLE* pSharedHandle)
     {
         HRESULT res = mDevice->CreateVolumeTexture( Width, Height, Depth, Levels, Usage, Format, Pool, ppVolumeTexture, pSharedHandle );
         Log( "%08x CreateVolumeTexture: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateCubeTexture)(THIS_ UINT EdgeLength,UINT Levels,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DCubeTexture9** ppCubeTexture,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateCubeTexture( EdgeLength, Levels, Usage, Format, Pool, ppCubeTexture, pSharedHandle );
-        Log( "%08x CreateCubeTexture: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateVertexBuffer)(THIS_ UINT Length,DWORD Usage,DWORD FVF,D3DPOOL Pool,IDirect3DVertexBuffer9** ppVertexBuffer,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateVertexBuffer( Length, Usage, FVF, Pool, ppVertexBuffer, pSharedHandle );
-        Log( "%08x CreateVertexBuffer: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateIndexBuffer)(THIS_ UINT Length,DWORD Usage,D3DFORMAT Format,D3DPOOL Pool,IDirect3DIndexBuffer9** ppIndexBuffer,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateIndexBuffer( Length, Usage, Format, Pool, ppIndexBuffer, pSharedHandle );
-        Log( "%08x CreateIndexBuffer: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateRenderTarget)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DMULTISAMPLE_TYPE MultiSample,DWORD MultisampleQuality,BOOL Lockable,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateRenderTarget( Width, Height, Format, MultiSample, MultisampleQuality, Lockable, ppSurface, pSharedHandle );
-        Log( "%08x CreateRenderTarget: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateDepthStencilSurface)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DMULTISAMPLE_TYPE MultiSample,DWORD MultisampleQuality,BOOL Discard,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateDepthStencilSurface( Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle );
-        Log( "%08x CreateDepthStencilSurface: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(UpdateSurface)(THIS_ IDirect3DSurface9* pSourceSurface,CONST RECT* pSourceRect,IDirect3DSurface9* pDestinationSurface,CONST POINT* pDestPoint)
-    {
-        HRESULT res = mDevice->UpdateSurface( pSourceSurface, pSourceRect, pDestinationSurface, pDestPoint );
-        Log( "%08x UpdateSurface: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(UpdateTexture)(THIS_ IDirect3DBaseTexture9* pSourceTexture,IDirect3DBaseTexture9* pDestinationTexture)
-    {
-        HRESULT res = mDevice->UpdateTexture( pSourceTexture, pDestinationTexture );
-        Log( "%08x UpdateTexture: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetRenderTargetData)(THIS_ IDirect3DSurface9* pRenderTarget,IDirect3DSurface9* pDestSurface)
-    {
-        HRESULT res = mDevice->GetRenderTargetData( pRenderTarget, pDestSurface );
-        Log( "%08x GetRenderTargetData: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetFrontBufferData)(THIS_ UINT iSwapChain,IDirect3DSurface9* pDestSurface)
-    {
-        HRESULT res = mDevice->GetFrontBufferData( iSwapChain, pDestSurface );
-        Log( "%08x GetFrontBufferData: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(StretchRect)(THIS_ IDirect3DSurface9* pSourceSurface,CONST RECT* pSourceRect,IDirect3DSurface9* pDestSurface,CONST RECT* pDestRect,D3DTEXTUREFILTERTYPE Filter)
-    {
-        HRESULT res = mDevice->StretchRect( pSourceSurface, pSourceRect, pDestSurface, pDestRect, Filter );
-        Log( "%08x StretchRect: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(ColorFill)(THIS_ IDirect3DSurface9* pSurface,CONST RECT* pRect,D3DCOLOR color)
-    {
-        HRESULT res = mDevice->ColorFill( pSurface, pRect, color );
-        Log( "%08x ColorFill: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(CreateOffscreenPlainSurface)(THIS_ UINT Width,UINT Height,D3DFORMAT Format,D3DPOOL Pool,IDirect3DSurface9** ppSurface,HANDLE* pSharedHandle)
-    {
-        HRESULT res = mDevice->CreateOffscreenPlainSurface( Width, Height, Format, Pool, ppSurface, pSharedHandle );
-        Log( "%08x CreateOffscreenPlainSurface: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(SetRenderTarget)(THIS_ DWORD RenderTargetIndex,IDirect3DSurface9* pRenderTarget)
-    {
-        HRESULT res = mDevice->SetRenderTarget( RenderTargetIndex, pRenderTarget );
-        Log( "%08x SetRenderTarget: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetRenderTarget)(THIS_ DWORD RenderTargetIndex,IDirect3DSurface9** ppRenderTarget)
-    {
-        HRESULT res = mDevice->GetRenderTarget( RenderTargetIndex, ppRenderTarget );
-        Log( "%08x GetRenderTarget: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(SetDepthStencilSurface)(THIS_ IDirect3DSurface9* pNewZStencil)
-    {
-        HRESULT res = mDevice->SetDepthStencilSurface( pNewZStencil );
-        Log( "%08x SetDepthStencilSurface: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetDepthStencilSurface)(THIS_ IDirect3DSurface9** ppZStencilSurface)
-    {
-        HRESULT res = mDevice->GetDepthStencilSurface( ppZStencilSurface );
-        Log( "%08x GetDepthStencilSurface: res = %x\n", this, res );
         return res;
 
     }
@@ -785,20 +1828,6 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     {
         HRESULT res = mDevice->GetClipStatus(pClipStatus);
         Log( "%08x GetClipStatus: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetTexture)(THIS_ DWORD Stage,IDirect3DBaseTexture9** ppTexture)
-    {
-        HRESULT res = mDevice->GetTexture(Stage,ppTexture);
-        Log( "%08x GetTexture: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(SetTexture)(THIS_ DWORD Stage,IDirect3DBaseTexture9* pTexture)
-    {
-        HRESULT res = mDevice->SetTexture(Stage,pTexture);
-        Log( "%08x SetTexture: res = %x\n", this, res );
         return res;
 
     }
@@ -963,16 +1992,14 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     STDMETHOD(SetVertexShader)(THIS_ IDirect3DVertexShader9* pShader)
     {
         HRESULT res = mDevice->SetVertexShader(pShader);
-        Log( "%08x SetVertexShader: res = %x\n", this, res );
+        Log( "%08x SetVertexShader: pShader = %x res = %x\n", this, pShader, res );
         return res;
-
     }
     STDMETHOD(GetVertexShader)(THIS_ IDirect3DVertexShader9** ppShader)
     {
         HRESULT res = mDevice->GetVertexShader(ppShader);
         Log( "%08x GetVertexShader: res = %x\n", this, res );
         return res;
-
     }
     STDMETHOD(SetVertexShaderConstantF)(THIS_ UINT StartRegister,CONST float* pConstantData,UINT Vector4fCount)
     {
@@ -1016,20 +2043,6 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         return res;
 
     }
-    STDMETHOD(SetStreamSource)(THIS_ UINT StreamNumber,IDirect3DVertexBuffer9* pStreamData,UINT OffsetInBytes,UINT Stride)
-    {
-        HRESULT res = mDevice->SetStreamSource(StreamNumber,pStreamData,OffsetInBytes,Stride);
-        Log( "%08x SetStreamSource: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetStreamSource)(THIS_ UINT StreamNumber,IDirect3DVertexBuffer9** ppStreamData,UINT* pOffsetInBytes,UINT* pStride)
-    {
-        HRESULT res = mDevice->GetStreamSource(StreamNumber,ppStreamData,pOffsetInBytes,pStride);
-        Log( "%08x GetStreamSource: res = %x\n", this, res );
-        return res;
-
-    }
     STDMETHOD(SetStreamSourceFreq)(THIS_ UINT StreamNumber,UINT Setting)
     {
         HRESULT res = mDevice->SetStreamSourceFreq(StreamNumber,Setting);
@@ -1044,20 +2057,6 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
         return res;
 
     }
-    STDMETHOD(SetIndices)(THIS_ IDirect3DIndexBuffer9* pIndexData)
-    {
-        HRESULT res = mDevice->SetIndices(pIndexData);
-        Log( "%08x SetIndices: res = %x\n", this, res );
-        return res;
-
-    }
-    STDMETHOD(GetIndices)(THIS_ IDirect3DIndexBuffer9** ppIndexData)
-    {
-        HRESULT res = mDevice->GetIndices(ppIndexData);
-        Log( "%08x GetIndices: res = %x\n", this, res );
-        return res;
-
-    }
     STDMETHOD(CreatePixelShader)(THIS_ CONST DWORD* pFunction,IDirect3DPixelShader9** ppShader)
     {
         HRESULT res = mDevice->CreatePixelShader(pFunction,ppShader);
@@ -1068,7 +2067,7 @@ interface IDirect3DDevice9Hooked : public IDirect3DDevice9
     STDMETHOD(SetPixelShader)(THIS_ IDirect3DPixelShader9* pShader)
     {
         HRESULT res = mDevice->SetPixelShader(pShader);
-        Log( "%08x SetPixelShader: res = %x\n", this, res );
+        Log( "%08x SetPixelShader: pShader = %x, res = %x\n", this, pShader, res );
         return res;
 
     }
@@ -1166,6 +2165,7 @@ public:
     STDMETHOD(CreateDevice)(UINT Adapter,D3DDEVTYPE DeviceType,HWND hFocusWindow,DWORD BehaviorFlags,
         D3DPRESENT_PARAMETERS* pPresentationParameters,IDirect3DDevice9** ppReturnedDeviceInterface)
     {
+        //BehaviorFlags &= ~D3DCREATE_PUREDEVICE;
         gHWND = hFocusWindow;
         HRESULT res = mD3D->CreateDevice( Adapter, DeviceType, hFocusWindow, BehaviorFlags, 
             pPresentationParameters, ppReturnedDeviceInterface );
@@ -1197,7 +2197,7 @@ public:
     }
 
     //------------------------------------------------------------------------------------------------------------------
-    // Boiler-plate pass through nonsense
+    // Boiler-plate pass through
     //------------------------------------------------------------------------------------------------------------------
     STDMETHOD(QueryInterface)(REFIID riid, void** ppvObj)
     {

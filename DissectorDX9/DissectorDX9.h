@@ -14,6 +14,11 @@ namespace DissectorDX9
         ET_DRAWUP,
         ET_CLEAR,
         ET_ENDFRAME,            // Need this to make sure we capture all render states at the end of a frame
+        ET_VERTEXLOCK,          // Needed to capture data if a vertex buffer is locked multiple times in a frame.
+        ET_INDEXLOCK,
+        ET_TEXTURELOCK,
+        ET_SURFACELOCK,
+        ET_CUBESURFACELOCK,
     };
 
     struct DrawBase
@@ -100,6 +105,27 @@ namespace DissectorDX9
         RGNDATA mDirtyRegion;
     };
 
+    struct BufferLockData
+    {
+        void* mBuffer;
+        UINT  mDataSize;
+        UINT  mOffsetToLock;
+        UINT  mSizeToLock;
+        DWORD mFlags;
+    };
+
+    struct SurfaceLockData
+    {
+        void* mBuffer;
+        void* mParent;
+        UINT  mFace;
+        UINT  mLevel;
+        UINT  mPitch;
+        UINT  mHeight;
+        RECT  mRect;
+        DWORD mFlags;
+    };
+
     inline HRESULT DrawIndexedPrimitive( IDirect3DDevice9* iD3DDevice, D3DPRIMITIVETYPE iType, INT iBaseVertexIndex,
                                   UINT iMinIndex,  UINT iNumVertices, UINT iStartIndex, UINT iPrimitiveCount )
     {
@@ -148,19 +174,20 @@ namespace DissectorDX9
                                     const void *pIndexData, D3DFORMAT IndexDataFormat, 
                                     const void *pVertexStreamZeroData,UINT VertexStreamZeroStride );
 
-    // Calling this is only neccessary if you set render states between your last draw call and present that you need next frame.
-    //HRESULT Present( IDirect3DDevice9* iD3DDevice, const RECT *pSourceRect, const RECT *pDestRect,
-    //    HWND hDestWindowOverride, const RGNDATA *pDirtyRegion )
-    //{
-    //    if( Dissector::IsCapturing() )
-    //    {
-    //        PresentData pd( pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion );
-    //        Dissector::RegisterEvent( iD3DDevice, ET_PRESENT, (const char*)&pd, sizeof(PresentData) );
-    //        InternalCheckRTUsage( iD3DDevice );
-    //    }
+    void VertexUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DVertexBuffer9* iBuffer, UINT iDataSize, UINT OffsetToLock,
+                           UINT SizeToLock, void* iData, DWORD Flags );
 
-    //    return iD3DDevice->Present( pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion );
-    //}
+    void IndexUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DIndexBuffer9* iBuffer, UINT iDataSize, UINT OffsetToLock,
+                           UINT SizeToLock, void* iData, DWORD Flags );
+
+    void SurfaceUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DSurface9* iSurface, D3DLOCKED_RECT *pLockedRect,
+                            const RECT &pRect, DWORD iFlags );
+
+    void Texture2DUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DTexture9* iTexture, UINT iLevel,
+                              D3DLOCKED_RECT *pLockedRect, const RECT &pRect, DWORD iFlags );
+
+    void TextureCubeUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DCubeTexture9* iTexture, UINT Face, UINT iLevel,
+                              D3DLOCKED_RECT *pLockedRect, const RECT &pRect, DWORD iFlags );
 
 
     // Setup

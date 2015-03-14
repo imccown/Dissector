@@ -1914,6 +1914,113 @@ DebugShaderCleanup:
                                             VertexStreamZeroStride );
     }
 
+    void BufferUnlockInternal( EventTypes iEventType, IDirect3DDevice9* iD3DDevice, void* iBuffer, UINT iDataSize,
+        UINT OffsetToLock, UINT SizeToLock, void* iData, DWORD Flags )
+    {
+        int dataSize = sizeof(BufferLockData) + iDataSize;
+        char* data = (char*)Dissector::MallocCallback( dataSize );
+        assert( data && "Failed to allocate space for buffer lock" );
+        if( data )
+        {
+            BufferLockData* lockData = (BufferLockData*)data;
+            lockData->mBuffer = iBuffer;
+            lockData->mDataSize = iDataSize;
+            lockData->mOffsetToLock = OffsetToLock;
+            lockData->mSizeToLock = SizeToLock;
+            lockData->mFlags = Flags;
+
+            memcpy( data + sizeof(BufferLockData), iData, iDataSize );
+
+            Dissector::RegisterEvent( iD3DDevice, iEventType, data, dataSize );
+        }
+    }
+
+    void SurfaceUnlockInternal( EventTypes iEventType, IDirect3DDevice9* iD3DDevice, void* iSurface, void* iParent, UINT iHeight,
+                                    UINT iFace, UINT iLevel, const D3DLOCKED_RECT& pLockedRect, const RECT &pRect, DWORD iFlags )
+    {
+        int dataSize = sizeof(SurfaceLockData) + (iHeight * pLockedRect.Pitch);
+        char* data = (char*)Dissector::MallocCallback( dataSize );
+        assert( data && "Failed to allocate space for surface lock" );
+        if( data )
+        {
+            SurfaceLockData* lockData = (SurfaceLockData*)data;
+            lockData->mBuffer = iSurface;
+            lockData->mFace = iFace;
+            lockData->mLevel = iLevel;
+            lockData->mPitch = pLockedRect.Pitch;
+            lockData->mHeight = iHeight;
+            lockData->mRect = pRect;
+            lockData->mFlags = iFlags;
+
+            memcpy( data + sizeof(BufferLockData), pLockedRect.pBits, iHeight * pLockedRect.Pitch );
+
+            Dissector::RegisterEvent( iD3DDevice, iEventType, data, dataSize );
+        }
+    }
+
+    void VertexUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DVertexBuffer9* iBuffer, UINT iDataSize, UINT OffsetToLock, UINT SizeToLock, void* iData, DWORD Flags )
+    {
+        if( Dissector::IsCapturing() && iDataSize )
+        {
+            BufferUnlockInternal(ET_VERTEXLOCK, iD3DDevice, iBuffer, iDataSize, OffsetToLock, SizeToLock, iData, Flags);
+        }
+    }
+
+    void IndexUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DIndexBuffer9* iBuffer, UINT iDataSize, UINT OffsetToLock,
+                           UINT SizeToLock, void* iData, DWORD Flags ) 
+    {
+        if( Dissector::IsCapturing() && iDataSize )
+        {
+            BufferUnlockInternal(ET_INDEXLOCK, iD3DDevice, iBuffer, iDataSize, OffsetToLock, SizeToLock, iData, Flags);
+        }
+    }
+
+    void SurfaceUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DSurface9* iSurface, D3DLOCKED_RECT *pLockedRect,
+                            const RECT &pRect, DWORD iFlags )
+    {
+        D3DSURFACE_DESC desc;
+        iSurface->GetDesc( &desc );
+        void *parent = NULL;
+        iSurface->GetContainer(IID_IDirect3DTexture9, &parent);
+        if( !parent )
+        {
+            iSurface->GetContainer(IID_IDirect3DCubeTexture9, &parent);
+        }
+
+        SurfaceUnlockInternal( ET_SURFACELOCK, iD3DDevice, iSurface, parent, desc.Height, 0, 0, *pLockedRect, pRect, iFlags );
+        if( parent )
+            ((IDirect3DResource9*)parent)->Release();
+    }
+
+    void Texture2DUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DTexture9* iTexture, UINT iLevel,
+                              D3DLOCKED_RECT *pLockedRect, const RECT &pRect, DWORD iFlags )
+    {
+        IDirect3DSurface9* surface;
+        if( S_OK != iTexture->GetSurfaceLevel( iLevel, &surface ) )
+            return;
+
+        D3DSURFACE_DESC desc;
+        surface->GetDesc( &desc );
+        surface->Release();
+
+        SurfaceUnlockInternal( ET_SURFACELOCK, iD3DDevice, iTexture, NULL, desc.Height, 0, iLevel, *pLockedRect, pRect, iFlags );
+    }
+
+    void TextureCubeUnlock( IDirect3DDevice9* iD3DDevice, IDirect3DCubeTexture9* iTexture, UINT iFace, UINT iLevel,
+                              D3DLOCKED_RECT *pLockedRect, const RECT &iRect, DWORD iFlags )
+    {
+        IDirect3DSurface9* surface;
+        if( S_OK != iTexture->GetCubeMapSurface( (D3DCUBEMAP_FACES)iFace, iLevel, &surface ) )
+            return;
+
+        D3DSURFACE_DESC desc;
+        surface->GetDesc( &desc );
+        surface->Release();
+
+        SurfaceUnlockInternal( ET_CUBESURFACELOCK, iD3DDevice, iTexture, NULL, desc.Height, iFace, iLevel, *pLockedRect, iRect, iFlags );
+    }
+
+
     bool ConvertRenderTargetToTexture( void* iDevice, IDirect3DSurface9* iSurface, IDirect3DTexture9** oTex )
     {
         IDirect3DDevice9* D3DDevice = (IDirect3DDevice9*)iDevice;
@@ -2245,7 +2352,7 @@ DebugShaderCleanup:
                     ScopedRelease<IDirect3DBaseTexture9> base;
                     D3DDevice->GetTexture( num, &base.mPtr );
                     if( base.mPtr )
-                        base->QueryInterface( IID_IDirect3DBaseTexture9, (void**)&src.mPtr );
+                        base->QueryInterface( IID_IDirect3DTexture9, (void**)&src.mPtr );
                     else
                         return;
                 }
@@ -2679,6 +2786,34 @@ DebugShaderCleanup:
                 {
                     _snprintf( oBuffer, iMaxSize-1, "End Frame" );
                 }break;
+            case( ET_VERTEXLOCK ):
+                {
+                    BufferLockData* ld = (BufferLockData*)dc;
+#ifdef WIN64
+                    _snprintf( oBuffer, iMaxSize-1, "Vertex buffer 0x%llu upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#else
+                    _snprintf( oBuffer, iMaxSize-1, "Vertex buffer 0x%x upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#endif
+                }break;
+            case( ET_INDEXLOCK ):
+                {
+                    BufferLockData* ld = (BufferLockData*)dc;
+#ifdef WIN64
+                    _snprintf( oBuffer, iMaxSize-1, "Index buffer 0x%llu upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#else
+                    _snprintf( oBuffer, iMaxSize-1, "Index buffer 0x%x upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#endif
+                }break;
+            case( ET_TEXTURELOCK ):
+                {
+                    BufferLockData* ld = (BufferLockData*)dc;
+#ifdef WIN64
+                    _snprintf( oBuffer, iMaxSize-1, "Texture buffer 0x%llu upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#else
+                    _snprintf( oBuffer, iMaxSize-1, "Texture buffer 0x%x upload %u bytes", (size_t)ld->mBuffer, ld->mDataSize );
+#endif
+                }break;
+
             default:
                 _snprintf( oBuffer, iMaxSize-1, "Unsupported" );
                 break;
