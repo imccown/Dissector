@@ -1187,19 +1187,21 @@ namespace Dissector
         SendResponse(Dissector::RSP_SHADERDEBUGINFO, &message, (unsigned int)(sizeof(message)), iDataBlob, (unsigned int)iDataSize, 0);
     }
 
-    void ShaderDebugFailedCallback( int iEventId, unsigned int loc0, unsigned int loc1 )
+    void ShaderDebugFailedCallback( int iEventId, unsigned int loc0, unsigned int loc1, const char* iMessage )
     {
         struct
         {
             int eventId;
             unsigned int loc0;
             unsigned int loc1;
+            unsigned int errStringLength;
         } message;
 
         message.eventId = iEventId;
         message.loc0 = loc0;
         message.loc1 = loc1;
-        SendResponse(Dissector::RSP_SHADERDEBUGFAILED, &message, (unsigned int)(sizeof(message)), 0);
+        message.errStringLength = iMessage ? (unsigned int)strlen( iMessage) : 0;
+        SendResponse(Dissector::RSP_SHADERDEBUGFAILED, &message, (unsigned int)(sizeof(message)), iMessage, message.errStringLength, 0);
     }
 
 

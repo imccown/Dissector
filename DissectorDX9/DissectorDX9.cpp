@@ -1311,6 +1311,7 @@ namespace DissectorDX9
     bool DebugShader(void* iDevice, int iEventId, const Dissector::DrawCallData& iData, unsigned int iShaderType,
                           char* iDebugData, unsigned int iDataSize, bool iPixelShader )
     {
+        char* errString = 0;
         bool validResults = false;
         unsigned int pixelX = 0;
         unsigned int pixelY = 0;
@@ -1349,6 +1350,7 @@ namespace DissectorDX9
         if( !shaderData )
         {
             rvalue = false;
+            errString = "Couldn't get shader byte code (no shader set)";
             goto DebugShaderCleanup;
         }
 
@@ -1367,12 +1369,14 @@ namespace DissectorDX9
             if( ( res = D3DDevice->CreateRenderTarget( curDesc.Width, curDesc.Height, D3DFMT_A32B32G32R32F,
                                            D3DMULTISAMPLE_NONE, 0, true, &newTarget.mPtr, NULL ) ) != D3D_OK )
             {
+                errString = "Couldn't create debugging render targets";
                 rvalue = false;
                 goto DebugShaderCleanup;
             }
             if( ( res = D3DDevice->CreateRenderTarget( curDesc.Width, curDesc.Height, D3DFMT_A32B32G32R32F,
                                            D3DMULTISAMPLE_NONE, 0, true, &instrTarget.mPtr, NULL ) ) != D3D_OK )
             {
+                errString = "Couldn't create debugging render targets";
                 rvalue = false;
                 goto DebugShaderCleanup;
             }
@@ -1382,12 +1386,14 @@ namespace DissectorDX9
             if( ( res = D3DDevice->CreateRenderTarget( 1, 1, D3DFMT_A32B32G32R32F,
                                            D3DMULTISAMPLE_NONE, 0, true, &newTarget.mPtr, NULL ) ) != D3D_OK )
             {
+                errString = "Couldn't create debugging render targets";
                 rvalue = false;
                 goto DebugShaderCleanup;
             }
             if( ( res = D3DDevice->CreateRenderTarget( 1, 1, D3DFMT_A32B32G32R32F,
                                            D3DMULTISAMPLE_NONE, 0, true, &instrTarget.mPtr, NULL ) ) != D3D_OK )
             {
+                errString = "Couldn't create debugging render targets";
                 rvalue = false;
                 goto DebugShaderCleanup;
             }
@@ -1397,6 +1403,7 @@ namespace DissectorDX9
         shaderDataPatched = Dissector::MallocCallback( shaderSize + ShaderDebugDX9::ShaderPatchSize );
         if( !shaderDataPatched )
         {
+            errString = "Couldn't allocate memory for debug shaders";
             rvalue = false;
             goto DebugShaderCleanup;
         }
@@ -1404,6 +1411,7 @@ namespace DissectorDX9
         info = ShaderDebugDX9::GetShaderInfo( shaderData, shaderSize, D3DDevice );
         if (!info.mDebugHeader)
         {
+            errString = "Shader contains no debugging information (compile with /Zi)";
             rvalue = false;
             goto DebugShaderCleanup;
         }
@@ -1591,6 +1599,7 @@ namespace DissectorDX9
 
         if( !debugBlob )
         {
+            errString = "Couldn't allocate memory for shader debug results";
             goto DebugShaderCleanup;
         }
 
@@ -1708,7 +1717,10 @@ DebugShaderCleanup:
 
         if( !validResults || !rvalue )
         {
-            Dissector::ShaderDebugFailedCallback( iEventId, pixelX, pixelY );
+            if( rvalue && !validResults && !errString )
+                errString = "No valid shader results for target. Target wasn't rasterized/processed or shader has no valid debug lines.";
+
+            Dissector::ShaderDebugFailedCallback( iEventId, pixelX, pixelY, errString );
         }
 
         return rvalue;

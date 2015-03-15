@@ -317,7 +317,7 @@ namespace Dissector
 
     // Call from ShaderDebugCallback to supply debug information.
     void ShaderDebugDataCallback( char* iDataBlob, unsigned int iDataSize, int iEventId, unsigned int loc0, unsigned int loc1 );
-    void ShaderDebugFailedCallback( int iEventId, unsigned int loc0, unsigned int loc1 );
+    void ShaderDebugFailedCallback( int iEventId, unsigned int loc0, unsigned int loc1, const char* iMessage );
 
     // Call from GetMeshCallback to supply the mesh.
     void MeshDebugDataCallback( unsigned int iEventId, Dissector::PrimitiveType::Type iType,

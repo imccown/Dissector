@@ -1667,11 +1667,12 @@ void MainWindow::HandleShaderDebugFailed()
     int eventNum      = GetBufferData<int>( dataIter );
     unsigned int loc0 = GetBufferData<unsigned int>( dataIter );
     unsigned int loc1 = GetBufferData<unsigned int>( dataIter );
+    unsigned int len  = GetBufferData<unsigned int>( dataIter );
+    QByteArray ba( dataIter, len );
 
     QMessageBox msgbox;
-    msgbox.setText( QString( "Shader debug for event %1 (%2,%3) failed.\n"
-                             "Probably because the pixel wasn't rasterized." ).
-                    arg( eventNum ).arg( loc0 ).arg( loc1 ) );
+    msgbox.setText( QString( "Shader debugging error for event %1 at (%2, %3): " ).arg( eventNum ).arg( loc0 ).arg( loc1 )
+                    + QString( ba ) );
     msgbox.setModal( true );
     msgbox.exec();
 }
