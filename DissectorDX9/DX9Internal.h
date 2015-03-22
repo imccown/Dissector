@@ -82,6 +82,7 @@ struct DX9Data
     IDirect3DVertexShader9* mPosTexVS;
     IDirect3DPixelShader9*  mTexPS;
     IDirect3DPixelShader9*  mVSDebugPS;
+    IDirect3DPixelShader9*  mCubeDebugVisPS;
 
     // Vertex Formats
     LPDIRECT3DVERTEXDECLARATION9    mPosVert;

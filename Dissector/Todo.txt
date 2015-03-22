@@ -1,10 +1,10 @@
 Tasks:
 
 --- Shortlist ---
-Better failure messages for shader debugging
 Cube texture support
 Choose which render target to view, and/or show all render targets
 Add a find dialog (search for text in draw call descs or render states)
+Finding out if/why draw call doesn't rasterize (degenerate vertices, indices, etc)
 
 -- Try to get in --
 Show changed render states between two calls
@@ -15,22 +15,16 @@ Better alpha background for texture window
 Spruce up shader compare results window
 Pixel History for render targets
 Pixel History for textures
-Finding out if/why draw call doesn't rasterize (degenerate vertices, indices, etc)
-Normalization for depth buffers
 Shader debugger sometimes doesn't have last line debug info
 Save everything (for later playback)
 Show texture formats and other useful information
 
 --- Some day ---
 Show which texture are actually used by the pixel shader.
-Pixel/Vertex shader 2.0 support. (2.0 shows steps but no values)
 BUG: Sometimes values in for loops don't update every iteration. texColor.rgb in tilerenderer.fx
-Handle lost devices and stuff( Just end the resim? )
 Picking vertices from a mesh for debugging.
 Changing render target for main display window
-Make texture image window update when render call changes if appropriate
 Set textureview title to render target/texture name or pointer
-Depth for D16/D32 lockable types
 Zoom/Pan main render window
 Changing textures, render targets, vertex stream, index streams, vertex declarations, shaders.
 Disable/Reorder/Create new draw calls

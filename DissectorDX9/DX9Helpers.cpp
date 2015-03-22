@@ -1034,13 +1034,13 @@ namespace DissectorDX9
 
         ResetDevice( iD3DDevice );
         ResetSampler( iD3DDevice, 0 );
-        iD3DDevice->SetRenderTarget( 0, iRenderTarget );
-        iD3DDevice->SetTexture( 0, iTexture );
-        iD3DDevice->SetPixelShader( overrideShader ? overrideShader : sDX9Data.mTexPS );
+        HRESULT res = iD3DDevice->SetRenderTarget( 0, iRenderTarget );
+        res = iD3DDevice->SetTexture( 0, iTexture );
+        res = iD3DDevice->SetPixelShader( overrideShader ? overrideShader : sDX9Data.mTexPS );
         ResetSampler( iD3DDevice, 0 );
-        iD3DDevice->SetSamplerState( 0, D3DSAMP_MAGFILTER, D3DTEXF_POINT );
-        iD3DDevice->SetSamplerState( 0, D3DSAMP_MINFILTER, D3DTEXF_POINT );
-        iD3DDevice->SetSamplerState( 0, D3DSAMP_MIPFILTER, D3DTEXF_POINT );
+        res = iD3DDevice->SetSamplerState( 0, D3DSAMP_MAGFILTER, D3DTEXF_POINT );
+        res = iD3DDevice->SetSamplerState( 0, D3DSAMP_MINFILTER, D3DTEXF_POINT );
+        res = iD3DDevice->SetSamplerState( 0, D3DSAMP_MIPFILTER, D3DTEXF_POINT );
 
         D3DSURFACE_DESC desc;
         iRenderTarget->GetDesc( &desc );

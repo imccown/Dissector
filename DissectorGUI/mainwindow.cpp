@@ -312,6 +312,9 @@ void MainWindow::slotCaptureClicked()
         {
             SendCommand( Dissector::CMD_RESUME, NULL, 0 );
             SetCaptureActive( false );
+            mThumbnailCache.clear();
+            mThumbnailRequests.clear();
+            mTextureRequests.clear();
         }
         else
         {
@@ -498,6 +501,9 @@ void MainWindow::slotConnectionStateChanged(QAbstractSocket::SocketState iState)
         //mDrawModel->clear();
         //mStatesModel->clear();
         mSocket->close();
+        mThumbnailCache.clear();
+        mThumbnailRequests.clear();
+        mTextureRequests.clear();
     }
 }
 
