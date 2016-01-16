@@ -96,6 +96,17 @@ void ShaderDebugWindow::ProcessInputData( MainWindow* iMain, char* iData, size_t
         QString str = QString::fromLocal8Bit( iter, size );
         iter += size;
         mFilenames.push_back( str );
+
+        // Only the base filename is a full path, need to try to complete other filenames from that path
+        if( str.length() >= 2 && str[1] == ':' ) {
+            std::string path = str.toLocal8Bit();
+            size_t findpos = path.rfind( '\\' );
+            if( findpos != std::string::npos ) {
+                path = path.substr( 0, findpos+1 );
+                mIncludeDirectories.push_back( path );
+                mIncludeDirectories.push_back( path + "Include\\" );
+            }
+        }
     }
 
     for( int ii = 0; ii < hdr.mNumVariables; ++ii )
@@ -179,15 +190,32 @@ void ShaderDebugWindow::GotoCurrentLine()
         {
             char buffer[1024];
             size_t readSize = 1;
+            text->clear();
+
+            QTextCursor cursor = text->textCursor();
+            cursor.setCharFormat( mDefaultTextFormat );
+            cursor.clearSelection();
+            text->setTextCursor( cursor );
+
             FILE* f;
             fopen_s( &f, mFilenames[ step.mFilename ].toLocal8Bit(), "r" );
-            while( f && readSize )
-            {
-                readSize = fread( buffer, 1, 1023, f );
-                buffer[readSize] = 0;
-                text->insertPlainText( QString( buffer ) );
+            int includeIter = 0;
+            while( !f ) {
+                fopen_s( &f, (mIncludeDirectories[includeIter] + mFilenames[ step.mFilename ].toLocal8Bit().data() ).c_str(), "r" );
+                includeIter++;
             }
-            fclose( f );
+            if( f ) {
+
+                while( readSize )
+                {
+                    readSize = fread( buffer, 1, 1023, f );
+                    buffer[readSize] = 0;
+                    text->insertPlainText( QString( buffer ) );
+                }
+                fclose( f );
+            } else {
+                text->insertPlainText( QString( "Couldn't Load File %1" ).arg( mFilenames[ step.mFilename ] ) );
+            }
 
             text->setReadOnly( true );
             mCurrentFile = step.mFilename;
@@ -347,7 +375,7 @@ void ShaderDebugWindow::CreateAnalyzeListing()
         if( step.mFilename >= 0 && step.mFilename < mFilenames.size() )
         {
             line += mFilenames[ step.mFilename ];
-            line += QString("%1").arg(step.mLine);
+            line += QString("").arg(step.mLine);
             mListing.push_back( line );
         }
     }
@@ -370,7 +398,7 @@ void ShaderDebugWindow::CreateStepList( QVector<QString>& iFileLineList,
                 if( step.mFilename >= 0 && step.mFilename < mFilenames.size() )
                 {
                     QString stepLine = mFilenames[ step.mFilename ];
-                    stepLine += QString("%1").arg(step.mLine);
+                    stepLine += QString("").arg(step.mLine);
                     if( QString::compare( stepLine, line ) == 0 )
                     {
                         matchNum = jj;

@@ -73,6 +73,7 @@ public:
     void GetVariableReports( QVector<VariableReport>& oVars );
 
     QVector< QString > mFilenames;
+    QVector< std::string > mIncludeDirectories;
     QVector< VariableEntry > mVariables;
     QVector< DebugStep > mSteps;
 
