@@ -9,6 +9,7 @@
 #include <QSettings>
 #include "mainwindow.h"
 #include <limits>
+#include <QFileDialog>
 
 ShaderDebugWindow::ShaderDebugWindow(QWidget *parent) :
     QDialog(parent),
@@ -104,7 +105,9 @@ void ShaderDebugWindow::ProcessInputData( MainWindow* iMain, char* iData, size_t
             if( findpos != std::string::npos ) {
                 path = path.substr( 0, findpos+1 );
                 mIncludeDirectories.push_back( path );
+                mIncludeDirectories.push_back( path + "..\\" );
                 mIncludeDirectories.push_back( path + "Include\\" );
+                mIncludeDirectories.push_back( path + "..\\Include\\" );
             }
         }
     }
@@ -200,9 +203,35 @@ void ShaderDebugWindow::GotoCurrentLine()
             FILE* f;
             fopen_s( &f, mFilenames[ step.mFilename ].toLocal8Bit(), "r" );
             int includeIter = 0;
-            while( !f ) {
-                fopen_s( &f, (mIncludeDirectories[includeIter] + mFilenames[ step.mFilename ].toLocal8Bit().data() ).c_str(), "r" );
+            while( !f && includeIter < mIncludeDirectories.size() ) {
+                std::string filename = (mIncludeDirectories[includeIter] + mFilenames[ step.mFilename ].toLocal8Bit().data() );
+                fopen_s( &f, filename.c_str(), "r" );
+                if( f ) {
+                    mFilenames[ step.mFilename ] = QString( filename.c_str() );
+                    break;
+                }
                 includeIter++;
+            }
+            if( !f ) {
+                std::string str = mFilenames[ step.mFilename ].toLocal8Bit().data();
+                size_t pos = str.rfind( '\\' );
+                if( pos != std::string::npos ) {
+                    str = str.substr( pos );
+                }
+                str = str + "(" + str + ")";
+                // Not in any include directories. Pop up a dialog.
+                QFileDialog fd( 0, QString("Missing file. Locating \"%1\"").arg( mFilenames[ step.mFilename ] ),
+                               mIncludeDirectories[0].c_str(), QString( str.c_str() ) ) ;
+                fd.setFileMode( QFileDialog::ExistingFile );
+                if( fd.exec() ) {
+                    QString newFile;
+                    fd.selectFile( newFile );
+                    newFile = fd.selectedFiles()[0];
+                    fopen_s( &f, newFile.toLocal8Bit().data(), "r" );
+                    if( f ) {
+                        mFilenames[ step.mFilename ] = newFile;
+                    }
+                }
             }
             if( f ) {
 
